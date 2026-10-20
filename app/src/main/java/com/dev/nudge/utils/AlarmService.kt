@@ -19,6 +19,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.dev.nudge.R
@@ -61,6 +62,7 @@ class AlarmService : Service() {
         private const val CHANNEL_ID = "nudge_alarm_service"
         private const val NOTIF_ID = 55001
         private const val AUTO_STOP_MILLIS = 60_000L
+        private const val TAG = "NudgeAlarm"
 
         /** Starts ringing (timer finished / critical reminder). */
         fun start(context: Context) {
@@ -79,6 +81,8 @@ class AlarmService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand action=${intent?.action ?: "(ring)"}")
+
         when (intent?.action) {
             ACTION_STOP -> {
                 stopRinging()
@@ -127,10 +131,18 @@ class AlarmService : Service() {
 
     private fun startRinging() {
         if (ringing) return
+
+        // 🔔 must be foreground ASAP after startForegroundService().
+        //    If the system rejects the FGS start (background start restrictions),
+        //    bail out cleanly instead of crashing the cold-started process.
+        if (!showOngoingNotification()) {
+            Log.w(TAG, "Could not enter foreground — stopping alarm service")
+            stopSelf()
+            return
+        }
+
         ringing = true
 
-        // 🔔 must be foreground ASAP after startForegroundService()
-        showOngoingNotification()
         requestAudioFocus()
         startVibrating()
 
@@ -266,7 +278,7 @@ class AlarmService : Service() {
         }
     }
 
-    private fun showOngoingNotification() {
+    private fun showOngoingNotification(): Boolean {
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, AlarmService::class.java).setAction(ACTION_STOP),
@@ -289,14 +301,21 @@ class AlarmService : Service() {
             .addAction(0, "Snooze +5 min", snoozeIntent)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIF_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            )
-        } else {
-            startForeground(NOTIF_ID, notification)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+            true
+        } catch (e: Exception) {
+            // e.g. ForegroundServiceStartNotAllowedException on Android 12+
+            Log.w(TAG, "startForeground failed", e)
+            false
         }
     }
 

@@ -1,13 +1,12 @@
 package com.dev.nudge.utils
 
-import android.annotation.SuppressLint
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.util.Log
+import com.dev.nudge.MainActivity
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -19,14 +18,15 @@ object NotificationScheduler {
     /**
      * Schedules a reminder for a task.
      *
-     * - Uses the task's stable id for the request code + intent data URI, so
-     *   two tasks with the same title get independent alarms.
-     * - Exact alarm when permitted; otherwise falls back to an inexact alarm
-     *   so the reminder still fires (Android 12+ doesn't grant
-     *   SCHEDULE_EXACT_ALARM automatically).
-     * - Alarms survive process death; BootReceiver reschedules after reboot.
+     * Uses [AlarmManager.setAlarmClock]: it needs NO runtime permission, is
+     * always exact, wakes the device, survives process death (swipe-away) and
+     * is exempt from the Android 12+ background-FGS-start restrictions — so
+     * the reminder fires even when the app was killed. [BootReceiver]
+     * reschedules after a reboot.
+     *
+     * The task's stable id backs the request code + intent data URI, so two
+     * tasks with the same title get independent alarms.
      */
-    @SuppressLint("ScheduleExactAlarm")
     fun scheduleTask(
         context: Context,
         taskId: String,
@@ -64,30 +64,27 @@ object NotificationScheduler {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            // Tapping the system's "upcoming alarm" entry opens the app
+            val showIntent = PendingIntent.getActivity(
+                context,
+                identity.hashCode() xor 0x5F5F,
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-            val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-                    alarmManager.canScheduleExactAlarms()
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(triggerTime, showIntent),
+                pendingIntent
+            )
 
-            if (canExact) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerTime,
-                    pendingIntent
-                )
-                Log.d(TAG, "Exact reminder set for $triggerTime")
-            } else {
-                // 🔁 Exact alarms not permitted — still remind, just less precisely
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerTime,
-                    pendingIntent
-                )
-                Log.d(TAG, "Exact alarm not permitted — inexact reminder set")
-            }
+            Log.d(TAG, "Reminder (re)scheduled for $triggerTime task='$title'")
 
         } catch (e: Exception) {
-            e.printStackTrace() // 🔥 prevents crash
+            Log.w(TAG, "Failed to schedule reminder for '$title'", e)
         }
     }
 

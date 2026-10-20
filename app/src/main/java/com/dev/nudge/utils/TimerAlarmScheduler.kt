@@ -32,22 +32,26 @@ object TimerAlarmScheduler {
 
     /**
      * Schedules the "timer finished" alarm at [endAtMillis] (wall clock).
-     * Returns false when exact alarms are not permitted (Android 12+).
+     *
+     * Uses [AlarmManager.setAlarmClock]: no permission needed, always exact,
+     * survives process death and is exempt from background-start restrictions.
      */
     fun schedule(context: Context, endAtMillis: Long): Boolean {
         return try {
             val alarmManager =
                 context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                !alarmManager.canScheduleExactAlarms()
-            ) {
-                return false
-            }
+            val showIntent = PendingIntent.getActivity(
+                context,
+                REQUEST_CODE,
+                Intent(context, com.dev.nudge.MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                endAtMillis,
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(endAtMillis, showIntent),
                 pendingIntent(context)
             )
             true
