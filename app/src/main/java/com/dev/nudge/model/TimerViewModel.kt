@@ -53,7 +53,7 @@ class TimerViewModel(private val context: Context) {
         _now.value = System.currentTimeMillis()
     }
 
-    fun start() {
+    fun start(focusedTaskId: String = "") {
         val s = _state.value
         val remainingNow = s.remainingAt(System.currentTimeMillis())
         if (remainingNow <= 0L) return
@@ -65,7 +65,8 @@ class TimerViewModel(private val context: Context) {
             s.copy(
                 status = TimerStatus.RUNNING,
                 endAtMillis = endAt,
-                remainingMillis = remainingNow
+                remainingMillis = remainingNow,
+                focusedTaskId = focusedTaskId.ifBlank { s.focusedTaskId }
             )
         )
 

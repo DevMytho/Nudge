@@ -233,7 +233,11 @@ fun FocusScreen(
                 Button(
                     onClick = {
                         vibrate()
-                        if (state.status == TimerStatus.RUNNING) timer.pause() else timer.start()
+                        if (state.status == TimerStatus.RUNNING) {
+                            timer.pause()
+                        } else {
+                            timer.start(currentTask?.id ?: "")
+                        }
                     },
                     shape = RoundedCornerShape(20.dp)
                 ) {
