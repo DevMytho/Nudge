@@ -9,6 +9,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -22,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.dev.nudge.BuildConfig
 import com.dev.nudge.CardBeige
 import com.dev.nudge.data.RingtoneStorage
 import com.google.firebase.auth.FirebaseAuth
@@ -103,6 +106,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState()) // 📜 whole page scrolls
             .padding(20.dp)
     ) {
 
@@ -321,9 +325,9 @@ fun SettingsScreen(
             Text("View Completed Tasks")
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        // 🔥 ABOUT (weight() isn't allowed inside a scrollable column)
+        Spacer(modifier = Modifier.height(40.dp))
 
-        // 🔥 ABOUT
         AboutSection()
     }
 }
@@ -338,7 +342,7 @@ fun AboutSection() {
         modifier = Modifier.fillMaxWidth()
     ) {
 
-        Text("Nudge v1.0")
+        Text("Nudge v${BuildConfig.VERSION_NAME}")
 
         Spacer(modifier = Modifier.height(4.dp))
 

@@ -34,3 +34,11 @@ jobs:
 
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
+
+      # 📦 Download the built APK from the run's "Artifacts" section
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nudge-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
