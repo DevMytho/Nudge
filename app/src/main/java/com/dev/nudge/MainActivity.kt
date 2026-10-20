@@ -27,20 +27,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
-import com.dev.nudge.data.FirestoreRepository
-import com.dev.nudge.data.TaskStorage
 import com.dev.nudge.data.ThemeStorage
-import com.dev.nudge.model.Task
+import com.dev.nudge.model.TaskViewModel
+import com.dev.nudge.model.TimerViewModel
 import com.dev.nudge.screens.*
 import com.dev.nudge.ui.theme.*
 import com.dev.nudge.utils.NotificationHelper
 import com.dev.nudge.utils.NotificationScheduler
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 val CardBeige = Color(0xFFEDE3DC)
 
 class MainActivity : ComponentActivity() {
+
+    // 🔥 Logic lives in ViewModels (StateFlow-backed); one instance per activity
+    private val taskViewModel by lazy { TaskViewModel(applicationContext) }
+    private val timerViewModel by lazy { TimerViewModel(applicationContext) }
+
+    override fun onDestroy() {
+        taskViewModel.close()
+        timerViewModel.close()
+        super.onDestroy()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -57,7 +65,6 @@ class MainActivity : ComponentActivity() {
                 alarmManager.canScheduleExactAlarms()
             } else true
         }
-
 
         // 🔥 Notification channel
         NotificationHelper.createChannel(this)
@@ -76,23 +83,18 @@ class MainActivity : ComponentActivity() {
                 isDarkMode = ThemeStorage.loadTheme(context)
             }
 
+            // 🔥 Logic lives in ViewModels (StateFlow-backed)
+            val taskViewModel = this@MainActivity.taskViewModel
+            val timerViewModel = this@MainActivity.timerViewModel
+
             NudgeTheme(darkTheme = isDarkMode) {
 
                 val navController = rememberNavController()
                 val currentRoute =
                     navController.currentBackStackEntryAsState().value?.destination?.route
 
-                val user = FirebaseAuth.getInstance().currentUser
-
-                var tasks by remember { mutableStateOf<List<Task>>(emptyList()) }
-                var completedTasks by remember { mutableStateOf<List<Task>>(emptyList()) }
-
-                LaunchedEffect(user) {
-                    if (user != null) {
-                        tasks = FirestoreRepository.getTasks()
-                        completedTasks = FirestoreRepository.getCompletedTasks()
-                    }
-                }
+                val tasks by taskViewModel.tasks.collectAsState()
+                val completedTasks by taskViewModel.completedTasks.collectAsState()
 
                 Scaffold(
 
@@ -193,19 +195,8 @@ class MainActivity : ComponentActivity() {
                         composable("home") {
                             HomeScreen(
                                 tasks = tasks,
-                                onRemove = { task ->
-                                    if (user != null) {
-                                        scope.launch {
-                                            FirestoreRepository.completeTask(task)
-                                            tasks = FirestoreRepository.getTasks()
-                                            completedTasks =
-                                                FirestoreRepository.getCompletedTasks()
-                                        }
-                                    }
-                                },
-                                onEdit = { task ->
-                                    navController.navigate("edit/${task.id}")
-                                }
+                                onRemove = { task -> taskViewModel.completeTask(task) },
+                                onEdit = { task -> navController.navigate("edit/${task.id}") }
                             )
                         }
 
@@ -213,19 +204,7 @@ class MainActivity : ComponentActivity() {
                             AddTaskScreen(
                                 onSave = { task ->
 
-                                    if (user != null) {
-                                        scope.launch {
-                                            FirestoreRepository.addTask(task)
-                                            tasks = FirestoreRepository.getTasks()
-                                        }
-                                    } else {
-                                        val updated = tasks + task
-                                        tasks = updated
-
-                                        scope.launch {
-                                            TaskStorage.saveTasks(context, updated)
-                                        }
-                                    }
+                                    taskViewModel.addTask(task)
 
                                     // 🔥 SCHEDULE NOTIFICATION
                                     val hasNotif = hasNotificationPermission(context)
@@ -236,7 +215,7 @@ class MainActivity : ComponentActivity() {
                                         Toast.makeText(
                                             context,
                                             "Enable notifications to get reminders 🔔",
-                                            Toast.LENGTH_SHORT
+                                            Toast.LENGTH_LONG
                                         ).show()
 
                                         // Request permissions
@@ -258,10 +237,10 @@ class MainActivity : ComponentActivity() {
                                             context,
                                             task.title,
                                             task.date,
-                                            task.time
+                                            task.time,
+                                            task.isCritical
                                         )
                                     }
-
 
                                     navController.popBackStack()
                                 },
@@ -280,17 +259,7 @@ class MainActivity : ComponentActivity() {
                                     existingTask = it,
                                     onSave = { updatedTask ->
 
-                                        val updatedList = tasks.map {
-                                            if (it.id == updatedTask.id) updatedTask else it
-                                        }
-
-                                        tasks = updatedList
-
-                                        if (user != null) {
-                                            scope.launch {
-                                                FirestoreRepository.updateTask(updatedTask)
-                                            }
-                                        }
+                                        taskViewModel.updateTask(updatedTask)
 
                                         val hasNotif = hasNotificationPermission(context)
                                         val hasAlarm = hasExactAlarmPermission(context)
@@ -300,7 +269,7 @@ class MainActivity : ComponentActivity() {
                                             Toast.makeText(
                                                 context,
                                                 "Enable notifications to get reminders 🔔",
-                                                Toast.LENGTH_SHORT
+                                                Toast.LENGTH_LONG
                                             ).show()
 
                                             // Request permissions
@@ -322,7 +291,8 @@ class MainActivity : ComponentActivity() {
                                                 context,
                                                 updatedTask.title,
                                                 updatedTask.date,
-                                                updatedTask.time
+                                                updatedTask.time,
+                                                updatedTask.isCritical
                                             )
                                         }
 
@@ -336,16 +306,8 @@ class MainActivity : ComponentActivity() {
                         composable("focus") {
                             FocusScreen(
                                 tasks = tasks,
-                                onDone = { task ->
-                                    if (user != null) {
-                                        scope.launch {
-                                            FirestoreRepository.completeTask(task)
-                                            tasks = FirestoreRepository.getTasks()
-                                            completedTasks =
-                                                FirestoreRepository.getCompletedTasks()
-                                        }
-                                    }
-                                },
+                                timer = timerViewModel,
+                                onDone = { task -> taskViewModel.completeTask(task) },
                                 onBack = { navController.popBackStack() }
                             )
                         }
@@ -355,12 +317,16 @@ class MainActivity : ComponentActivity() {
                                 isDarkMode = isDarkMode,
                                 onToggleTheme = {
                                     isDarkMode = it
-                                    scope.launch {
-                                        ThemeStorage.saveTheme(context, it)
-                                    }
+                                    scope.launch { ThemeStorage.saveTheme(context, it) }
                                 },
                                 onLoginClick = {
-                                    navController.navigate("login")
+                                    navController.navigate("login") {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onLogout = {
+                                    // 🧹 wipes local guest data, then signs out
+                                    taskViewModel.logout()
                                 },
                                 onViewCompletedClick = {
                                     navController.navigate("completed")
@@ -370,31 +336,10 @@ class MainActivity : ComponentActivity() {
 
                         composable("completed") {
 
-                            var completed by remember { mutableStateOf<List<Task>>(emptyList()) }
-
-                            LaunchedEffect(Unit) {
-                                completed = FirestoreRepository.getCompletedTasks()
-                            }
-
                             CompletedTasksScreen(
-                                tasks = completed,
-                                onReAdd = { task ->
-                                    scope.launch {
-                                        FirestoreRepository.addTask(task)
-                                        FirestoreRepository.deleteCompletedTask(task)
-
-                                        completed =
-                                            FirestoreRepository.getCompletedTasks()
-                                        tasks = FirestoreRepository.getTasks()
-                                    }
-                                },
-                                onDelete = { task ->
-                                    scope.launch {
-                                        FirestoreRepository.deleteCompletedTask(task)
-                                        completed =
-                                            FirestoreRepository.getCompletedTasks()
-                                    }
-                                },
+                                tasks = completedTasks,
+                                onReAdd = { task -> taskViewModel.reAddTask(task) },
+                                onDelete = { task -> taskViewModel.deleteCompletedTask(task) },
                                 onBack = { navController.popBackStack() }
                             )
                         }

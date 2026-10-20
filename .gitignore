@@ -1,6 +1,16 @@
 *.iml
 .gradle
+
+# Secrets & machine-local config — never commit
 /local.properties
+local.properties
+*.jks
+*.keystore
+app/google-services.json
+/google-services.json
+/.idea/
+
+# Previous IDE ignores
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml

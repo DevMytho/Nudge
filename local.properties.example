@@ -1,0 +1,17 @@
+## Copy this file to local.properties (which is gitignored) and fill in real values.
+## Never commit local.properties.
+##
+## Android SDK location (Android Studio usually writes this automatically)
+sdk.dir=/path/to/Android/Sdk
+
+## Google web client ID used for Google Sign-In (BuildConfig.GOOGLE_WEB_CLIENT_ID).
+## Without it the app still builds; the "Continue with Google" button is hidden.
+google.web.client.id=YOUR_WEB_CLIENT_ID
+
+## Release signing — required only for ./gradlew assembleRelease.
+## Debug builds work without these.
+## NOTE: if the old keystore/passwords were ever committed, rotate the key.
+#release.storeFile=/path/to/nudge.jks
+#release.storePassword=YOUR_STORE_PASSWORD
+#release.keyAlias=nudgekey
+#release.keyPassword=YOUR_KEY_PASSWORD

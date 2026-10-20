@@ -16,7 +16,8 @@ object NotificationScheduler {
         context: Context,
         title: String,
         date: String,
-        time: String
+        time: String,
+        isCritical: Boolean = false
     ) {
 
         try {
@@ -32,6 +33,7 @@ object NotificationScheduler {
 
             val intent = Intent(context, NotificationReceiver::class.java).apply {
                 putExtra("title", title)
+                putExtra("critical", isCritical)
             }
 
             val pendingIntent = PendingIntent.getBroadcast(

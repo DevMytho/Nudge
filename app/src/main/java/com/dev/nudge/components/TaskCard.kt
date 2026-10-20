@@ -13,9 +13,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 import com.dev.nudge.CardBeige
 import com.dev.nudge.model.Task
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.dev.nudge.model.TaskUtils
 
 @Composable
 fun TaskCard(
@@ -126,30 +124,4 @@ fun TaskCard(
     }
 }
 
-fun getDisplayTime(task: Task): String {
-
-    if (task.date.isBlank() || task.time.isBlank()) return ""
-
-    return try {
-        val sdf = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-        val taskDateTime = sdf.parse("${task.date} ${task.time}") ?: return task.time
-
-        val now = Date()
-        val diff = taskDateTime.time - now.time
-
-        val minutes = diff / (1000 * 60)
-        val hours = diff / (1000 * 60 * 60)
-        val days = diff / (1000 * 60 * 60 * 24)
-
-        when {
-            diff < 0 -> "Due • ${task.time}" // 🔥 clean past state
-            minutes < 60 -> "$minutes min left"
-            hours < 24 -> "$hours hr left"
-            days < 7 -> "$days day left"
-            else -> task.date
-        }
-
-    } catch (e: Exception) {
-        task.time
-    }
-}
+fun getDisplayTime(task: Task): String = TaskUtils.getDisplayTime(task)

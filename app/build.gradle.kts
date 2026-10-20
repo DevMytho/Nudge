@@ -1,10 +1,35 @@
 
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.24"
     id("com.google.gms.google-services")
 }
+
+// ---------------------------------------------------------------------------
+// Secrets are read from local.properties or environment variables.
+// They are NEVER hardcoded here. Debug builds work without any of them;
+// only assembleRelease needs the release signing values.
+// See local.properties.example for the expected keys.
+// ---------------------------------------------------------------------------
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun secret(name: String): String? =
+    (localProperties.getProperty(name)
+        ?: System.getenv(name.replace('.', '_').uppercase()))
+        ?.takeIf { it.isNotBlank() }
+
+val googleWebClientId = secret("google.web.client.id") ?: ""
+
+val releaseStoreFilePath = secret("release.storeFile")
+val releaseStorePassword = secret("release.storePassword")
+val releaseKeyAlias = secret("release.keyAlias")
+val releaseKeyPassword = secret("release.keyPassword")
 
 android {
     namespace = "com.dev.nudge"
@@ -13,11 +38,17 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("${project.rootDir}/nudge.jks") // your keystore file
-            storePassword = "nudge123"
-            keyAlias = "nudgekey"
-            keyPassword = "nudge123"
+        if (releaseStoreFilePath != null &&
+            releaseStorePassword != null &&
+            releaseKeyAlias != null &&
+            releaseKeyPassword != null
+        ) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFilePath)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -29,12 +60,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            // Unsigned (or debug-signed) release builds are fine when no
+            // keystore is configured; assembleRelease will fail at signing time.
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -47,6 +83,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

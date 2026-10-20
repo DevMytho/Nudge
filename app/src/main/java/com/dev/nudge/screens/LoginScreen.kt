@@ -21,6 +21,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.dev.nudge.BuildConfig
 import com.dev.nudge.R
 import com.google.android.gms.auth.api.signin.*
 import com.google.android.gms.common.api.ApiException
@@ -63,13 +64,20 @@ fun LoginScreen(
         }
     }
 
-    val googleSignInClient = remember {
-        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken("872931321166-fnpckiep7m911c6icsq06fehess3h4f4.apps.googleusercontent.com")
-            .requestEmail()
-            .build()
+    // 🔑 Client ID comes from BuildConfig (local.properties), never hardcoded.
+    val googleClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
 
-        GoogleSignIn.getClient(context, options)
+    val googleSignInClient = remember(googleClientId) {
+        if (googleClientId.isBlank()) {
+            null
+        } else {
+            val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(googleClientId)
+                .requestEmail()
+                .build()
+
+            GoogleSignIn.getClient(context, options)
+        }
     }
 
     val launcher = rememberLauncherForActivityResult(
@@ -282,19 +290,21 @@ fun LoginScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        OutlinedButton(
-            onClick = {
-                launcher.launch(googleSignInClient.signInIntent)
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_google),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(if (isLogin) "Continue with Google" else "Register with Google")
+        if (googleSignInClient != null) {
+            OutlinedButton(
+                onClick = {
+                    launcher.launch(googleSignInClient.signInIntent)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_google),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (isLogin) "Continue with Google" else "Register with Google")
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))

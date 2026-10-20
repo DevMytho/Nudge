@@ -4,6 +4,8 @@ import com.dev.nudge.model.Task
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.google.firebase.firestore.ListenerRegistration
+import java.util.UUID
 
 object FirestoreRepository {
 
@@ -15,92 +17,85 @@ object FirestoreRepository {
             ?: throw IllegalStateException("User not logged in")
     }
 
-    // 🔥 SAVE TASK
+    private fun tasksRef() = db.collection("users").document(userId()).collection("tasks")
+
+    private fun completedRef() =
+        db.collection("users").document(userId()).collection("completedTasks")
+
+    // 🔥 SAVE TASK (doc id == task id so ids are stable & unique)
     suspend fun addTask(task: Task) {
-        db.collection("users")
-            .document(userId())
-            .collection("tasks")
-            .add(task)
-            .await()
-        println("🔥 ADDING TASK FOR USER: ${userId()}")
+        val id = task.id.ifBlank { UUID.randomUUID().toString() }
+        tasksRef().document(id).set(task.copy(id = id)).await()
     }
 
     // 🔥 GET TASKS
     suspend fun getTasks(): List<Task> {
-        val snapshot = db.collection("users")
-            .document(userId())
-            .collection("tasks")
-            .get()
-            .await()
-        println("🔥 FETCHING TASKS FOR USER: ${userId()}")
-
-        return snapshot.toObjects(Task::class.java)
+        val snapshot = tasksRef().get().await()
+        return snapshot.documents.map { doc ->
+            val task = doc.toObject(Task::class.java) ?: return@map null
+            if (task.id.isBlank()) {
+                // 🔑 one-time migration for legacy docs without an id
+                doc.reference.update("id", doc.id).await()
+                task.copy(id = doc.id)
+            } else task
+        }.filterNotNull()
     }
 
-    // 🔥 DELETE TASK (by title for now)
+    // 🔥 DELETE TASK — by stable id (never by title)
     suspend fun deleteTask(task: Task) {
-        val snapshot = db.collection("users")
-            .document(userId())
-            .collection("tasks")
-            .whereEqualTo("title", task.title)
+        if (task.id.isBlank()) return
+        val snapshot = tasksRef()
+            .whereEqualTo("id", task.id)
             .get()
             .await()
 
         snapshot.documents.forEach {
-            it.reference.delete()
+            it.reference.delete().await()
         }
     }
 
     // 🔥 MOVE TO COMPLETED
     suspend fun completeTask(task: Task) {
+        val id = task.id.ifBlank { UUID.randomUUID().toString() }
+        val stamped = task.copy(id = id)
 
-        val uid = userId()
-
-        // add to completed
-        db.collection("users")
-            .document(uid)
-            .collection("completedTasks")
-            .add(task)
-            .await()
+        // add to completed (doc id == task id, so double-completes don't duplicate)
+        completedRef().document(id).set(stamped).await()
 
         // delete from active
-        deleteTask(task)
+        deleteTask(stamped)
     }
 
     // 🔥 GET COMPLETED
     suspend fun getCompletedTasks(): List<Task> {
-        val snapshot = db.collection("users")
-            .document(userId())
-            .collection("completedTasks")
-            .get()
-            .await()
-
-        return snapshot.toObjects(Task::class.java)
+        val snapshot = completedRef().get().await()
+        return snapshot.documents.map { doc ->
+            val task = doc.toObject(Task::class.java) ?: return@map null
+            if (task.id.isBlank()) {
+                // 🔑 one-time migration for legacy docs without an id
+                doc.reference.update("id", doc.id).await()
+                task.copy(id = doc.id)
+            } else task
+        }.filterNotNull()
     }
 
     suspend fun deleteCompletedTask(task: Task) {
+        if (task.id.isBlank()) return
 
-        val uid = userId() ?: return
-
-        val snapshot = db.collection("users")
-            .document(uid)
-            .collection("completedTasks")
-            .whereEqualTo("title", task.title)
-            .whereEqualTo("time", task.time)
-            .whereEqualTo("date", task.date)
+        val snapshot = completedRef()
+            .whereEqualTo("id", task.id)
             .get()
             .await()
 
         snapshot.documents.forEach {
-            it.reference.delete()
+            it.reference.delete().await()
         }
     }
 
     suspend fun updateTask(updatedTask: Task) {
+        if (updatedTask.id.isBlank()) return
 
-        val snapshot = db.collection("users")
-            .document(userId())
-            .collection("tasks")
+        val snapshot = tasksRef()
             .whereEqualTo("id", updatedTask.id)
             .get()
             .await()
@@ -109,4 +104,34 @@ object FirestoreRepository {
             it.reference.set(updatedTask).await()
         }
     }
+
+    // 🔥 LIVE UPDATES — snapshot listeners (no manual refresh needed)
+
+    fun listenTasks(onChanged: (List<Task>) -> Unit): ListenerRegistration =
+        tasksRef().addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null) return@addSnapshotListener
+
+            onChanged(snapshot.documents.map { doc ->
+                val task = doc.toObject(Task::class.java) ?: return@map null
+                if (task.id.isBlank()) {
+                    // 🔑 one-time migration for legacy docs without an id
+                    doc.reference.update("id", doc.id)
+                    task.copy(id = doc.id)
+                } else task
+            }.filterNotNull())
+        }
+
+    fun listenCompletedTasks(onChanged: (List<Task>) -> Unit): ListenerRegistration =
+        completedRef().addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null) return@addSnapshotListener
+
+            onChanged(snapshot.documents.map { doc ->
+                val task = doc.toObject(Task::class.java) ?: return@map null
+                if (task.id.isBlank()) {
+                    // 🔑 one-time migration for legacy docs without an id
+                    doc.reference.update("id", doc.id)
+                    task.copy(id = doc.id)
+                } else task
+            }.filterNotNull())
+        }
 }

@@ -4,8 +4,7 @@ import android.app.Activity
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.view.View
-import androidx.annotation.RequiresApi
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,25 +12,27 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.dev.nudge.components.ProgressRing
-import com.dev.nudge.model.Task
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.*
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.ui.graphics.toArgb
+import com.dev.nudge.components.ProgressRing
+import com.dev.nudge.data.TimerState
+import com.dev.nudge.data.TimerStatus
+import com.dev.nudge.model.Task
+import com.dev.nudge.model.TaskUtils
+import com.dev.nudge.model.TimerViewModel
+import kotlinx.coroutines.delay
 
 @Composable
 fun FocusScreen(
     tasks: List<Task>,
+    timer: TimerViewModel,
     onDone: (Task) -> Unit,
     onBack: () -> Unit
 ) {
@@ -86,45 +87,63 @@ fun FocusScreen(
     }
 
     // 📳 HAPTIC
-    @RequiresApi(Build.VERSION_CODES.O)
     fun vibrate() {
         val vibrator = context.getSystemService(Vibrator::class.java)
-        vibrator?.vibrate(
-            VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE)
-        )
-    }
-
-    fun getPriorityValue(task: Task): Int {
-        return when {
-            task.isCritical -> 0
-            task.priority == "High" -> 1
-            task.priority == "Medium" -> 2
-            else -> 3
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(
+                VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(40)
         }
     }
 
-    fun getDeadlineValue(task: Task): Long {
-        return try {
-            val sdf = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-            sdf.parse("${task.date} ${task.time}")?.time ?: Long.MAX_VALUE
-        } catch (e: Exception) {
-            Long.MAX_VALUE
-        }
+    fun getPriorityValue(task: Task): Int = TaskUtils.priorityValue(task).let {
+        if (task.isCritical) 0 else it
     }
 
-    val sortedTasks = tasks.sortedWith(
+    fun sortTasks(list: List<Task>): List<Task> = list.sortedWith(
         compareBy<Task>(
             { getPriorityValue(it) },
-            { getDeadlineValue(it) }
+            {
+                try {
+                    java.text.SimpleDateFormat("dd-MM-yyyy HH:mm", java.util.Locale.getDefault())
+                        .parse("${it.date} ${it.time}")?.time ?: Long.MAX_VALUE
+                } catch (e: Exception) {
+                    Long.MAX_VALUE
+                }
+            }
         )
     )
 
     var currentTask by remember { mutableStateOf<Task?>(null) }
-    var timeLeft by rememberSaveable { mutableStateOf(1500) }
-    var isRunning by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(tasks) {
-        currentTask = sortedTasks.firstOrNull()
+        currentTask = sortTasks(tasks).firstOrNull()
+    }
+
+    // ⏱ TIMER STATE from the ViewModel (end-timestamp model)
+    val state by timer.state.collectAsState()
+    val now by timer.now.collectAsState()
+    val timeLeft = state.remainingAt(now)
+
+    // ⏱ TICK — recompute remaining time from the end timestamp every second
+    LaunchedEffect(state.status, state.endAtMillis) {
+        if (state.status == TimerStatus.RUNNING) {
+            while (true) {
+                timer.tick()
+                val left = timer.state.value.remainingAt(System.currentTimeMillis())
+                if (left <= 0L) break
+                delay(left.coerceAtMost(1000L))
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        timer.messages.collect { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
     }
 
     Column(
@@ -132,7 +151,6 @@ fun FocusScreen(
             .fillMaxSize()
             .padding(if (isFullscreen) 12.dp else 16.dp)
     ) {
-
         // 🚪 EXIT BUTTON
         if (isFullscreen) {
             Row(
@@ -163,9 +181,9 @@ fun FocusScreen(
                 return
             }
 
-            val minutes = timeLeft / 60
-            val seconds = timeLeft % 60
-            val baseTime = 1500f
+            val minutes = timeLeft / 60_000
+            val seconds = (timeLeft % 60_000) / 1000
+            val baseTime = state.totalMillis.toFloat()
             val progress = (1f - (timeLeft / baseTime)).coerceIn(0f, 1f)
 
             // 🔥 TAP → FULLSCREEN + HAPTIC
@@ -215,17 +233,17 @@ fun FocusScreen(
                 Button(
                     onClick = {
                         vibrate()
-                        isRunning = !isRunning
+                        if (state.status == TimerStatus.RUNNING) timer.pause() else timer.start()
                     },
                     shape = RoundedCornerShape(20.dp)
                 ) {
-                    Text(if (isRunning) "Pause" else "Start")
+                    Text(if (state.status == TimerStatus.RUNNING) "Pause" else "Start")
                 }
 
                 Button(
                     onClick = {
-                        timeLeft = 1500
-                        isRunning = false
+                        vibrate()
+                        timer.reset()
                     }
                 ) {
                     Text("Reset")
@@ -235,12 +253,11 @@ fun FocusScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-
-                Button(onClick = { timeLeft += 300 }) {
+                Button(onClick = { timer.addTime(300_000L) }) {
                     Text("+5 min")
                 }
 
-                Button(onClick = { timeLeft += 600 }) {
+                Button(onClick = { timer.addTime(600_000L) }) {
                     Text("+10 min")
                 }
             }
@@ -253,30 +270,13 @@ fun FocusScreen(
                     onDone(finished)
 
                     val remaining = tasks.filter { it != finished }
+                    currentTask = sortTasks(remaining).firstOrNull()
 
-                    currentTask = remaining
-                        .sortedWith(
-                            compareBy<Task>(
-                                { getPriorityValue(it) },
-                                { getDeadlineValue(it) }
-                            )
-                        )
-                        .firstOrNull()
-
-                    timeLeft = 1500
-                    isRunning = false
+                    timer.reset()
                 }
             ) {
                 Text("Mark as Done")
             }
-        }
-    }
-
-    // ⏱ TIMER LOOP
-    LaunchedEffect(isRunning) {
-        while (isRunning && timeLeft > 0) {
-            delay(1000)
-            timeLeft--
         }
     }
 }
