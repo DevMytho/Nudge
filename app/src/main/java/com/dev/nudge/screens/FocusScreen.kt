@@ -33,14 +33,14 @@ import kotlinx.coroutines.delay
 fun FocusScreen(
     tasks: List<Task>,
     timer: TimerViewModel,
+    isFullscreen: Boolean,
+    onFullscreenChange: (Boolean) -> Unit,
     onDone: (Task) -> Unit,
     onBack: () -> Unit
 ) {
 
     val context = LocalContext.current
     val activity = context as Activity
-
-    var isFullscreen by remember { mutableStateOf(false) }
 
     val bgColor = MaterialTheme.colorScheme.background
     val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -159,7 +159,7 @@ fun FocusScreen(
             ) {
                 IconButton(onClick = {
                     vibrate()
-                    isFullscreen = false
+                    onFullscreenChange(false)
                 }) {
                     Icon(
                         Icons.Default.Logout,
@@ -190,7 +190,7 @@ fun FocusScreen(
             Box(
                 modifier = Modifier.clickable {
                     vibrate()
-                    isFullscreen = true
+                    onFullscreenChange(true)
                 }
             ) {
                 ProgressRing(
@@ -263,6 +263,18 @@ fun FocusScreen(
 
                 Button(onClick = { timer.addTime(600_000L) }) {
                     Text("+10 min")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { timer.addTime(-300_000L) }) {
+                    Text("-5 min")
+                }
+
+                Button(onClick = { timer.addTime(-600_000L) }) {
+                    Text("-10 min")
                 }
             }
 

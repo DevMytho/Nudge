@@ -48,8 +48,16 @@ class TaskViewModel(private val context: Context) {
         completedListener = null
 
         if (loggedIn) {
-            tasksListener = FirestoreRepository.listenTasks { _tasks.value = it }
-            completedListener = FirestoreRepository.listenCompletedTasks { _completedTasks.value = it }
+            tasksListener = FirestoreRepository.listenTasks {
+                _tasks.value = it
+                // 💾 mirror to local storage so BootReceiver can reschedule
+                //    reminders after a reboot even without network
+                scope.launch { TaskStorage.saveTasks(context, it) }
+            }
+            completedListener = FirestoreRepository.listenCompletedTasks {
+                _completedTasks.value = it
+                scope.launch { TaskStorage.saveCompletedTasks(context, it) }
+            }
         } else {
             scope.launch {
                 _tasks.value = TaskStorage.loadTasks(context)

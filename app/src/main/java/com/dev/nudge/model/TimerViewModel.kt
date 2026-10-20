@@ -91,13 +91,15 @@ class TimerViewModel(private val context: Context) {
     fun addTime(millis: Long) {
         val s = _state.value
         if (s.status == TimerStatus.RUNNING) {
-            val newEnd = s.endAtMillis + millis
+            // ⛔ never let the end time land in the past
+            val newEnd = (s.endAtMillis + millis)
+                .coerceAtLeast(System.currentTimeMillis())
             persist(s.copy(endAtMillis = newEnd))
             if (!TimerAlarmScheduler.schedule(context, newEnd)) {
                 _messages.tryEmit("Allow exact alarms in Settings to get the timer alert ⏰")
             }
         } else {
-            persist(s.copy(remainingMillis = s.remainingMillis + millis))
+            persist(s.copy(remainingMillis = (s.remainingMillis + millis).coerceAtLeast(0L)))
         }
     }
 

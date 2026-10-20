@@ -48,6 +48,7 @@ class BootReceiver : BroadcastReceiver() {
                 (localTasks + remoteTasks).forEach { task ->
                     NotificationScheduler.scheduleTask(
                         context,
+                        task.id,
                         task.title,
                         task.date,
                         task.time,

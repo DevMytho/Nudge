@@ -93,6 +93,13 @@ class MainActivity : ComponentActivity() {
                 val currentRoute =
                     navController.currentBackStackEntryAsState().value?.destination?.route
 
+                // 🖥 Focus-tab fullscreen hides the app chrome too (bottom bar + FAB)
+                var focusFullscreen by remember { mutableStateOf(false) }
+
+                LaunchedEffect(currentRoute) {
+                    if (currentRoute != "focus") focusFullscreen = false
+                }
+
                 val tasks by taskViewModel.tasks.collectAsState()
                 val completedTasks by taskViewModel.completedTasks.collectAsState()
 
@@ -101,7 +108,7 @@ class MainActivity : ComponentActivity() {
                     containerColor = MaterialTheme.colorScheme.background,
 
                     floatingActionButton = {
-                        if (currentRoute != "login") {
+                        if (currentRoute != "login" && !focusFullscreen) {
                             FloatingActionButton(
                                 onClick = { navController.navigate("add") },
                                 containerColor = SoftBlue,
@@ -114,7 +121,7 @@ class MainActivity : ComponentActivity() {
                     },
 
                     bottomBar = {
-                        if (currentRoute != "login") {
+                        if (currentRoute != "login" && !focusFullscreen) {
 
                             val barColor =
                                 if (isDarkMode) Color.Black else MaterialTheme.colorScheme.surface
@@ -235,6 +242,7 @@ class MainActivity : ComponentActivity() {
                                         // ✅ everything allowed → schedule normally
                                         NotificationScheduler.scheduleTask(
                                             context,
+                                            task.id,
                                             task.title,
                                             task.date,
                                             task.time,
@@ -289,6 +297,7 @@ class MainActivity : ComponentActivity() {
                                             // ✅ everything allowed → schedule normally
                                             NotificationScheduler.scheduleTask(
                                                 context,
+                                                updatedTask.id,
                                                 updatedTask.title,
                                                 updatedTask.date,
                                                 updatedTask.time,
@@ -307,6 +316,8 @@ class MainActivity : ComponentActivity() {
                             FocusScreen(
                                 tasks = tasks,
                                 timer = timerViewModel,
+                                isFullscreen = focusFullscreen,
+                                onFullscreenChange = { focusFullscreen = it },
                                 onDone = { task -> taskViewModel.completeTask(task) },
                                 onBack = { navController.popBackStack() }
                             )
