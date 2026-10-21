@@ -64,11 +64,23 @@ class AlarmService : Service() {
         private const val AUTO_STOP_MILLIS = 60_000L
         private const val TAG = "NudgeAlarm"
 
-        /** Starts ringing (timer finished / critical reminder). */
-        fun start(context: Context) {
+        private const val EXTRA_TASK_TITLE = "task_title"
+        private const val EXTRA_IS_CRITICAL = "is_critical"
+
+        /**
+         * Starts ringing.
+         *
+         * @param taskTitle when non-null (critical task reminder) the ongoing
+         *   notification says "Time for {task} to be done" instead of the
+         *   generic "Take a break 🎉" timer message.
+         */
+        fun start(context: Context, taskTitle: String? = null, isCritical: Boolean = false) {
             ContextCompat.startForegroundService(
                 context,
-                Intent(context, AlarmService::class.java)
+                Intent(context, AlarmService::class.java).apply {
+                    if (taskTitle != null) putExtra(EXTRA_TASK_TITLE, taskTitle)
+                    putExtra(EXTRA_IS_CRITICAL, isCritical)
+                }
             )
         }
     }
@@ -114,7 +126,10 @@ class AlarmService : Service() {
                 return START_NOT_STICKY
             }
 
-            else -> startRinging()
+            else -> startRinging(
+                taskTitle = intent?.getStringExtra(EXTRA_TASK_TITLE),
+                isCritical = intent?.getBooleanExtra(EXTRA_IS_CRITICAL, false) ?: false
+            )
         }
         return START_NOT_STICKY
     }
@@ -129,13 +144,13 @@ class AlarmService : Service() {
 
     // ---------------------------------------------------------------- ring
 
-    private fun startRinging() {
+    private fun startRinging(taskTitle: String? = null, isCritical: Boolean = false) {
         if (ringing) return
 
         // 🔔 must be foreground ASAP after startForegroundService().
         //    If the system rejects the FGS start (background start restrictions),
         //    bail out cleanly instead of crashing the cold-started process.
-        if (!showOngoingNotification()) {
+        if (!showOngoingNotification(taskTitle, isCritical)) {
             Log.w(TAG, "Could not enter foreground — stopping alarm service")
             stopSelf()
             return
@@ -278,7 +293,10 @@ class AlarmService : Service() {
         }
     }
 
-    private fun showOngoingNotification(): Boolean {
+    private fun showOngoingNotification(
+        taskTitle: String?,
+        isCritical: Boolean
+    ): Boolean {
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, AlarmService::class.java).setAction(ACTION_STOP),
@@ -290,10 +308,22 @@ class AlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // 🔴 critical task reminder → name the task; timer finish → "take a break"
+        val contentTitle: String
+        val contentText: String
+        if (isCritical && !taskTitle.isNullOrBlank()) {
+            contentTitle = "Critical Task"
+            contentText = "Time for $taskTitle to be done"
+        } else {
+            contentTitle = "Time's up!"
+            contentText = "Take a break 🎉"
+        }
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Time's up!")
-            .setContentText("Take a break 🎉")
+            .setContentTitle(contentTitle)
+            .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

@@ -223,6 +223,7 @@ fun AddTaskScreen(
                         modifier = Modifier
                             .weight(1f)
                             .clickable { showDatePicker = true },
+                        placeholder = { Text("dd-mm-yyyy") },
                         enabled = false
                     )
 
@@ -232,6 +233,7 @@ fun AddTaskScreen(
                         modifier = Modifier
                             .weight(1f)
                             .clickable { showTimePicker = true },
+                        placeholder = { Text("hh:mm") },
                         enabled = false
                     )
                 }

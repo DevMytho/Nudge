@@ -40,7 +40,7 @@ class NotificationReceiver : BroadcastReceiver() {
 
         // 1️⃣ Reminder notification first — always
         NotificationHelper.createChannel(context)
-        showNotification(context, title)
+        showNotification(context, title, isCritical)
 
         // 2️⃣ Ring afterwards for critical tasks (optional enhancement)
         if (!isCritical) return
@@ -50,7 +50,7 @@ class NotificationReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 if (RingtoneStorage.loadCriticalRing(context)) {
-                    AlarmService.start(context)
+                    AlarmService.start(context, title, isCritical = true)
                     Log.d(TAG, "AlarmService started for critical reminder '$title'")
                 }
             } catch (e: Exception) {
@@ -62,7 +62,7 @@ class NotificationReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showNotification(context: Context, title: String) {
+    private fun showNotification(context: Context, title: String, isCritical: Boolean) {
         try {
             val canPost = Build.VERSION.SDK_INT < 33 || ActivityCompat.checkSelfPermission(
                 context, Manifest.permission.POST_NOTIFICATIONS
@@ -73,11 +73,18 @@ class NotificationReceiver : BroadcastReceiver() {
                 return
             }
 
+            // 🔴 critical tasks get their own wording with the task name
+            val contentTitle = if (isCritical) "Critical Task" else "Nudge"
+            val contentText =
+                if (isCritical) "Time for $title to be done" else title
+
             val notification = NotificationCompat.Builder(context, "nudge_channel")
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle("Nudge")
-                .setContentText(title)
+                .setContentTitle(contentTitle)
+                .setContentText(contentText)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setAutoCancel(true)
                 .build()
 
