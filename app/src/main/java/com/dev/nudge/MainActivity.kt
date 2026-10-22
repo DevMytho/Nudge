@@ -28,12 +28,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import com.dev.nudge.data.ThemeStorage
+import com.dev.nudge.model.Task
 import com.dev.nudge.model.TaskViewModel
 import com.dev.nudge.model.TimerViewModel
 import com.dev.nudge.screens.*
 import com.dev.nudge.ui.theme.*
 import com.dev.nudge.utils.NotificationHelper
-import com.dev.nudge.utils.NotificationScheduler
 import kotlinx.coroutines.launch
 
 val CardBeige = Color(0xFFEDE3DC)
@@ -87,6 +87,49 @@ class MainActivity : ComponentActivity() {
             val taskViewModel = this@MainActivity.taskViewModel
             val timerViewModel = this@MainActivity.timerViewModel
 
+            // 🔔 One place that nudges the user for the two permissions the
+            //    reminder system displays under. Scheduling itself (setAlarmClock)
+            //    never needs a permission — TaskViewModel always arms the alarm.
+            fun promptReminderPermissionsIfNeeded() {
+                val hasNotif = hasNotificationPermission(context)
+                val hasAlarm = hasExactAlarmPermission(context)
+                if (hasNotif && hasAlarm) return
+
+                Toast.makeText(
+                    context,
+                    getString(R.string.reminder_permissions_rationale),
+                    Toast.LENGTH_LONG
+                ).show()
+
+                if (!hasNotif && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    (context as Activity).requestPermissions(
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        1001
+                    )
+                }
+
+                if (!hasAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                }
+            }
+
+            val snackbarHostState = remember { SnackbarHostState() }
+
+            // 🗑️ Undo helper: deleting shows a snackbar; Undo brings the task
+            //    back AND re-arms its reminder (TaskViewModel.restoreTask).
+            fun showDeleteUndoSnackbar(task: Task) {
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = getString(R.string.task_deleted),
+                        actionLabel = getString(R.string.undo_action),
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        taskViewModel.restoreTask(task)
+                    }
+                }
+            }
+
             NudgeTheme(darkTheme = isDarkMode) {
 
                 val navController = rememberNavController()
@@ -106,6 +149,8 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
 
                     containerColor = MaterialTheme.colorScheme.background,
+
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
 
                     floatingActionButton = {
                         if (currentRoute != "login" && !focusFullscreen) {
@@ -203,53 +248,20 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 tasks = tasks,
                                 onRemove = { task -> taskViewModel.completeTask(task) },
-                                onEdit = { task -> navController.navigate("edit/${task.id}") }
+                                onEdit = { task -> navController.navigate("edit/${task.id}") },
+                                onDelete = { task ->
+                                    taskViewModel.deleteTask(task)
+                                    showDeleteUndoSnackbar(task)
+                                }
                             )
                         }
 
                         composable("add") {
                             AddTaskScreen(
                                 onSave = { task ->
-
+                                    // 🔔 arming the reminder lives in TaskViewModel
                                     taskViewModel.addTask(task)
-
-                                    // 🔥 SCHEDULE NOTIFICATION
-                                    val hasNotif = hasNotificationPermission(context)
-                                    val hasAlarm = hasExactAlarmPermission(context)
-
-                                    if (!hasNotif || !hasAlarm) {
-
-                                        Toast.makeText(
-                                            context,
-                                            "Enable notifications to get reminders 🔔",
-                                            Toast.LENGTH_LONG
-                                        ).show()
-
-                                        // Request permissions
-                                        if (!hasNotif && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                            (context as Activity).requestPermissions(
-                                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                                                1001
-                                            )
-                                        }
-
-                                        if (!hasAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                            context.startActivity(intent)
-                                        }
-
-                                    } else {
-                                        // ✅ everything allowed → schedule normally
-                                        NotificationScheduler.scheduleTask(
-                                            context,
-                                            task.id,
-                                            task.title,
-                                            task.date,
-                                            task.time,
-                                            task.isCritical
-                                        )
-                                    }
-
+                                    promptReminderPermissionsIfNeeded()
                                     navController.popBackStack()
                                 },
                                 onBack = { navController.popBackStack() }
@@ -266,46 +278,15 @@ class MainActivity : ComponentActivity() {
                                 AddTaskScreen(
                                     existingTask = it,
                                     onSave = { updatedTask ->
-
+                                        // 🔁 updateTask cancels + re-arms the reminder
                                         taskViewModel.updateTask(updatedTask)
-
-                                        val hasNotif = hasNotificationPermission(context)
-                                        val hasAlarm = hasExactAlarmPermission(context)
-
-                                        if (!hasNotif || !hasAlarm) {
-
-                                            Toast.makeText(
-                                                context,
-                                                "Enable notifications to get reminders 🔔",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-
-                                            // Request permissions
-                                            if (!hasNotif && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                                (context as Activity).requestPermissions(
-                                                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                                                    1001
-                                                )
-                                            }
-
-                                            if (!hasAlarm && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                                                context.startActivity(intent)
-                                            }
-
-                                        } else {
-                                            // ✅ everything allowed → schedule normally
-                                            NotificationScheduler.scheduleTask(
-                                                context,
-                                                updatedTask.id,
-                                                updatedTask.title,
-                                                updatedTask.date,
-                                                updatedTask.time,
-                                                updatedTask.isCritical
-                                            )
-                                        }
-
+                                        promptReminderPermissionsIfNeeded()
                                         navController.popBackStack()
+                                    },
+                                    onDelete = { toDelete ->
+                                        taskViewModel.deleteTask(toDelete)
+                                        navController.popBackStack()
+                                        showDeleteUndoSnackbar(toDelete)
                                     },
                                     onBack = { navController.popBackStack() }
                                 )

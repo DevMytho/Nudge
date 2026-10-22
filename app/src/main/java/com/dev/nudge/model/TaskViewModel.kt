@@ -20,9 +20,15 @@ import kotlinx.coroutines.launch
  * - Guest     → tasks live in DataStore ([TaskStorage]).
  * - Logout    → local data is wiped before signing out.
  *
+ * Reminder lifecycle lives here too (single source of truth):
+ * add/update re-arm, complete/delete cancel, restore/undo re-arms.
+ *
  * Plain class (no lifecycle-viewmodel dep) — instantiate with remember {}.
  */
-class TaskViewModel(private val context: Context) {
+class TaskViewModel(
+    private val context: Context,
+    private val reminders: ReminderScheduler = AndroidReminderScheduler(context)
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -78,6 +84,7 @@ class TaskViewModel(private val context: Context) {
             _tasks.value = updated
             scope.launch { TaskStorage.saveTasks(context, updated) }
         }
+        reminders.scheduleIfFuture(task)
     }
 
     fun updateTask(task: Task) {
@@ -88,6 +95,9 @@ class TaskViewModel(private val context: Context) {
             _tasks.value = updated
             scope.launch { TaskStorage.saveTasks(context, updated) }
         }
+        // 🔁 edit = cancel the old reminder, then re-arm for the new date/time
+        reminders.cancel(task)
+        reminders.scheduleIfFuture(task)
     }
 
     fun completeTask(task: Task) {
@@ -103,6 +113,32 @@ class TaskViewModel(private val context: Context) {
                 TaskStorage.saveCompletedTasks(context, updatedCompleted)
             }
         }
+        // 🔕 a completed task must never fire its reminder
+        reminders.cancel(task)
+    }
+
+    /** 🗑 Permanently remove an active task (used by swipe/delete + undo). */
+    fun deleteTask(task: Task) {
+        if (isLoggedIn()) {
+            scope.launch { FirestoreRepository.deleteTask(task) }
+        } else {
+            val updated = _tasks.value.filter { it.id != task.id }
+            _tasks.value = updated
+            scope.launch { TaskStorage.saveTasks(context, updated) }
+        }
+        reminders.cancel(task)
+    }
+
+    /** ↩️ Undo a delete: bring the task back and re-arm its reminder. */
+    fun restoreTask(task: Task) {
+        if (isLoggedIn()) {
+            scope.launch { FirestoreRepository.addTask(task) }
+        } else {
+            val updated = _tasks.value + task
+            _tasks.value = updated
+            scope.launch { TaskStorage.saveTasks(context, updated) }
+        }
+        reminders.scheduleIfFuture(task)
     }
 
     /** Restore a completed task back to the active list. */
@@ -122,6 +158,7 @@ class TaskViewModel(private val context: Context) {
                 TaskStorage.saveCompletedTasks(context, updatedCompleted)
             }
         }
+        reminders.scheduleIfFuture(task)
     }
 
     fun deleteCompletedTask(task: Task) {

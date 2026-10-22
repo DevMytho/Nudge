@@ -82,6 +82,18 @@ object TaskUtils {
         )
     }
 
+    /**
+     * 🔔 Epoch millis when a reminder for [task] should fire, or null when
+     * the task has no usable deadline or its deadline is already in the past.
+     *
+     * Single source of truth for "should this task have an armed reminder?".
+     */
+    fun reminderTimeMillis(task: Task, now: Date = Date()): Long? {
+        if (task.date.isBlank() || task.time.isBlank()) return null
+        val taskDateTime = parseDateTime(task.date, task.time) ?: return null
+        return taskDateTime.time.takeIf { it > now.time }
+    }
+
     /** 🔥 Relative countdown text: "45 min left" / "Due • 10:30" / raw date. */
     fun getDisplayTime(task: Task, now: Date = Date()): String {
 

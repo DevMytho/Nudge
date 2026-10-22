@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">Nudge</string>
+
+    <!-- Phase 0: delete + undo -->
+    <string name="delete_task">Delete task</string>
+    <string name="task_deleted">Task deleted</string>
+    <string name="undo_action">Undo</string>
+    <string name="reminder_permissions_rationale">Enable notifications to get reminders 🔔</string>
 </resources>

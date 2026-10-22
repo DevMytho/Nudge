@@ -11,8 +11,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.dev.nudge.CardBeige
+import com.dev.nudge.R
 import com.dev.nudge.model.Task
 import com.dev.nudge.ui.theme.DarkText
 import java.text.SimpleDateFormat
@@ -24,6 +26,7 @@ import java.util.UUID
 fun AddTaskScreen(
     existingTask: Task? = null, // 🔥 NEW
     onSave: (Task) -> Unit,     // 🔥 CHANGED
+    onDelete: ((Task) -> Unit)? = null, // 🗑 delete when editing
     onBack: () -> Unit
 ) {
 
@@ -299,6 +302,21 @@ fun AddTaskScreen(
                     enabled = isValid
                 ) {
                     Text(if (existingTask == null) "Add Task" else "Update Task")
+                }
+
+                // 🗑 DELETE (edit mode only)
+                if (existingTask != null && onDelete != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Button(
+                        onClick = { onDelete(existingTask) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text(stringResource(R.string.delete_task))
+                    }
                 }
             }
         }

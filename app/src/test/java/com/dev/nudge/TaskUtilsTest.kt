@@ -3,6 +3,7 @@ package com.dev.nudge
 import com.dev.nudge.model.Task
 import com.dev.nudge.model.TaskUtils
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -119,6 +120,34 @@ class TaskUtilsTest {
         val groups = TaskUtils.groupTasks(listOf(normalHigh, criticalLow), now)
 
         assertEquals(listOf("c", "h"), groups.today.map { it.id })
+    }
+
+    // -------------------------------------------------------------- reminders
+
+    @Test
+    fun `reminder fires for a future deadline`() {
+        val t = task(date = "10-06-2026", time = "10:30")
+        assertEquals(
+            sdf.parse("10-06-2026 10:30")!!.time,
+            TaskUtils.reminderTimeMillis(t, now)
+        )
+    }
+
+    @Test
+    fun `no reminder for a past deadline`() {
+        val t = task(date = "10-06-2026", time = "09:00")
+        assertNull(TaskUtils.reminderTimeMillis(t, now))
+    }
+
+    @Test
+    fun `no reminder when date or time is blank`() {
+        assertNull(TaskUtils.reminderTimeMillis(task(date = "", time = "10:30"), now))
+        assertNull(TaskUtils.reminderTimeMillis(task(date = "10-06-2026", time = ""), now))
+    }
+
+    @Test
+    fun `no reminder when deadline is unparseable`() {
+        assertNull(TaskUtils.reminderTimeMillis(task(date = "garbage", time = "10:30"), now))
     }
 
     // ----------------------------------------------------------------- sorting
