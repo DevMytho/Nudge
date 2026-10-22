@@ -6,4 +6,51 @@
     <string name="task_deleted">Task deleted</string>
     <string name="undo_action">Undo</string>
     <string name="reminder_permissions_rationale">Enable notifications to get reminders 🔔</string>
+
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="clear">Clear</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_start">Start</string>
+    <string name="action_more">More options</string>
+    <string name="action_pick_date">Pick a date</string>
+    <string name="action_scroll_top">Scroll to top</string>
+
+    <!-- Tasks tab -->
+    <string name="day_summary">%1$d / %2$d done</string>
+    <string name="day_summary_focus">%1$s focused</string>
+    <string name="day_summary_focus_of_estimate">%1$s focused of %2$s est.</string>
+    <string name="view_day">Day</string>
+    <string name="view_all">All</string>
+    <string name="carried_over">Carried over</string>
+    <string name="move_to_date">Move to %1$s</string>
+    <string name="empty_day">No tasks for this day</string>
+    <string name="empty_day_after_carry">No tasks planned for this day yet</string>
+    <string name="hide_completed">Hide completed</string>
+
+    <!-- Task card -->
+    <string name="chip_due">Due %1$s</string>
+    <string name="chip_estimate_minutes">~%1$s</string>
+    <string name="chip_estimate_cycles">~%1$d 🍅</string>
+    <string name="chip_actual">%1$s focused</string>
+
+    <!-- Add / edit task -->
+    <string name="new_task">New Task</string>
+    <string name="edit_task">Edit Task</string>
+    <string name="add_task">Add Task</string>
+    <string name="update_task">Update Task</string>
+    <string name="field_title">Task Title</string>
+    <string name="field_day">Planned Day</string>
+    <string name="field_deadline">Deadline (optional)</string>
+    <string name="deadline_placeholder">hh:mm</string>
+    <string name="field_priority">Priority</string>
+    <string name="field_estimate">Estimate</string>
+    <string name="estimate_hint">How much focused work do you think it needs? Separate from the deadline.</string>
+    <string name="estimate_minutes">Minutes</string>
+    <string name="estimate_cycles">Pomodoros</string>
+    <string name="estimate_clear">No estimate</string>
+    <string name="mark_critical">Mark Critical</string>
+    <string name="marked_critical">Marked Critical</string>
+    <string name="fill_all_fields">Please fill all fields</string>
 </resources>

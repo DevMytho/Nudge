@@ -12,6 +12,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.Date
 
 /**
  * 🔥 Owns all task state.
@@ -27,7 +28,8 @@ import kotlinx.coroutines.launch
  */
 class TaskViewModel(
     private val context: Context,
-    private val reminders: ReminderScheduler = AndroidReminderScheduler(context)
+    private val reminders: ReminderScheduler = AndroidReminderScheduler(context),
+    private val clock: AppClock = AppSystemClock
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -37,6 +39,22 @@ class TaskViewModel(
 
     private val _completedTasks = MutableStateFlow<List<Task>>(emptyList())
     val completedTasks: StateFlow<List<Task>> = _completedTasks
+
+    // 🔥 Tasks-tab view state (survives rotation — lives as long as the activity)
+    private val _selectedDate =
+        MutableStateFlow(TaskUtils.todayIso(Date(clock.nowMillis())))
+    val selectedDate: StateFlow<String> = _selectedDate
+
+    private val _hideCompleted = MutableStateFlow(false)
+    val hideCompleted: StateFlow<Boolean> = _hideCompleted
+
+    /**
+     * taskId → focused seconds (sum of FOCUS segments). Precomputed here so
+     * item composables stay cheap with hundreds of tasks.
+     * Filled by the session layer (Phase 2); empty until then.
+     */
+    private val _actualSecondsByTask = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val actualSecondsByTask: StateFlow<Map<String, Int>> = _actualSecondsByTask
 
     private var tasksListener: ListenerRegistration? = null
     private var completedListener: ListenerRegistration? = null
@@ -101,11 +119,15 @@ class TaskViewModel(
     }
 
     fun completeTask(task: Task) {
+        val completed = task.copy(
+            isCompleted = true,
+            completedAt = System.currentTimeMillis()
+        )
         if (isLoggedIn()) {
-            scope.launch { FirestoreRepository.completeTask(task) }
+            scope.launch { FirestoreRepository.completeTask(completed) }
         } else {
             val updatedActive = _tasks.value.filter { it.id != task.id }
-            val updatedCompleted = _completedTasks.value + task
+            val updatedCompleted = _completedTasks.value + completed
             _tasks.value = updatedActive
             _completedTasks.value = updatedCompleted
             scope.launch {
@@ -115,6 +137,27 @@ class TaskViewModel(
         }
         // 🔕 a completed task must never fire its reminder
         reminders.cancel(task)
+    }
+
+    /** 🔁 Un-strike a completed task: back to active, reminder re-armed. */
+    fun uncompleteTask(task: Task) {
+        val active = task.copy(isCompleted = false, completedAt = null)
+        if (isLoggedIn()) {
+            scope.launch {
+                FirestoreRepository.addTask(active)
+                FirestoreRepository.deleteCompletedTask(task)
+            }
+        } else {
+            val updatedActive = _tasks.value + active
+            val updatedCompleted = _completedTasks.value.filter { it.id != task.id }
+            _tasks.value = updatedActive
+            _completedTasks.value = updatedCompleted
+            scope.launch {
+                TaskStorage.saveTasks(context, updatedActive)
+                TaskStorage.saveCompletedTasks(context, updatedCompleted)
+            }
+        }
+        reminders.scheduleIfFuture(active)
     }
 
     /** 🗑 Permanently remove an active task (used by swipe/delete + undo). */
@@ -141,24 +184,19 @@ class TaskViewModel(
         reminders.scheduleIfFuture(task)
     }
 
-    /** Restore a completed task back to the active list. */
-    fun reAddTask(task: Task) {
-        if (isLoggedIn()) {
-            scope.launch {
-                FirestoreRepository.addTask(task)
-                FirestoreRepository.deleteCompletedTask(task)
-            }
-        } else {
-            val updatedActive = _tasks.value + task
-            val updatedCompleted = _completedTasks.value.filter { it.id != task.id }
-            _tasks.value = updatedActive
-            _completedTasks.value = updatedCompleted
-            scope.launch {
-                TaskStorage.saveTasks(context, updatedActive)
-                TaskStorage.saveCompletedTasks(context, updatedCompleted)
-            }
-        }
-        reminders.scheduleIfFuture(task)
+    /** 📅 Tasks-tab: date strip selection (state survives rotation). */
+    fun selectDate(isoDate: String) {
+        _selectedDate.value = isoDate
+    }
+
+    /** 🙈 Tasks-tab overflow: hide/show struck-through tasks in the list. */
+    fun toggleHideCompleted() {
+        _hideCompleted.value = !_hideCompleted.value
+    }
+
+    /** Called by the session layer whenever focus segments change (Phase 2). */
+    fun setActualSeconds(map: Map<String, Int>) {
+        _actualSecondsByTask.value = map
     }
 
     fun deleteCompletedTask(task: Task) {

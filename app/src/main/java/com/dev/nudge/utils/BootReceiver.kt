@@ -45,16 +45,18 @@ class BootReceiver : BroadcastReceiver() {
                     emptyList()
                 }
 
-                (localTasks + remoteTasks).forEach { task ->
-                    NotificationScheduler.scheduleTask(
-                        context,
-                        task.id,
-                        task.title,
-                        task.date,
-                        task.time,
-                        task.isCritical
-                    )
-                }
+                (localTasks + remoteTasks)
+                    .filter { !it.isCompleted }
+                    .forEach { task ->
+                        NotificationScheduler.scheduleTask(
+                            context,
+                            task.id,
+                            task.title,
+                            task.date,
+                            task.dueTime ?: "",
+                            task.critical
+                        )
+                    }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

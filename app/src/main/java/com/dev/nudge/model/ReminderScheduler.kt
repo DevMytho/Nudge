@@ -26,8 +26,8 @@ class AndroidReminderScheduler(private val context: Context) : ReminderScheduler
             task.id,
             task.title,
             task.date,
-            task.time,
-            task.isCritical
+            task.dueTime ?: "",
+            task.critical
         )
     }
 

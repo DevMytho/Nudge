@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.dev.nudge.model.Task
+import com.dev.nudge.model.normalized
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -51,9 +52,11 @@ object TaskStorage {
         return try {
             val prefs = context.dataStore.data.first()
             val json = prefs[key] ?: return emptyList()
-            // 🔑 Assign a stable id to any legacy task saved without one.
+            // 🔑 Assign a stable id to any legacy task saved without one,
+            //    then run the pre-v3 → v3 field migration (ISO dates, dueTime…).
             Json.decodeFromString<List<Task>>(json).map { task ->
-                if (task.id.isBlank()) task.copy(id = UUID.randomUUID().toString()) else task
+                val withId = if (task.id.isBlank()) task.copy(id = UUID.randomUUID().toString()) else task
+                withId.normalized()
             }
         } catch (e: Exception) {
             e.printStackTrace()

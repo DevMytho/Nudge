@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,8 +35,7 @@ fun SettingsScreen(
     isDarkMode: Boolean,
     onToggleTheme: (Boolean) -> Unit,
     onLoginClick: () -> Unit,
-    onLogout: () -> Unit,
-    onViewCompletedClick: () -> Unit // 🔥 NEW PARAM
+    onLogout: () -> Unit
 ) {
 
     val auth = FirebaseAuth.getInstance()
@@ -302,28 +300,6 @@ fun SettingsScreen(
         Divider()
 
         Spacer(modifier = Modifier.height(20.dp))
-
-        // 🔥 DATA SECTION
-        Text(
-            "Your Data",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onViewCompletedClick() } // 🔥 FIXED
-                .padding(vertical = 12.dp)
-        ) {
-            Icon(Icons.Default.History, contentDescription = null)
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Text("View Completed Tasks")
-        }
 
         // 🔥 ABOUT (weight() isn't allowed inside a scrollable column)
         Spacer(modifier = Modifier.height(40.dp))

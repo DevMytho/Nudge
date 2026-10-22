@@ -33,6 +33,7 @@ import kotlinx.coroutines.delay
 fun FocusScreen(
     tasks: List<Task>,
     timer: TimerViewModel,
+    initialTaskId: String? = null, // 🎯 preselected by the Tasks tab ▶ Start
     isFullscreen: Boolean,
     onFullscreenChange: (Boolean) -> Unit,
     onDone: (Task) -> Unit,
@@ -100,7 +101,7 @@ fun FocusScreen(
     }
 
     fun getPriorityValue(task: Task): Int = TaskUtils.priorityValue(task).let {
-        if (task.isCritical) 0 else it
+        if (task.critical) 0 else it
     }
 
     fun sortTasks(list: List<Task>): List<Task> = list.sortedWith(
@@ -119,8 +120,9 @@ fun FocusScreen(
 
     var currentTask by remember { mutableStateOf<Task?>(null) }
 
-    LaunchedEffect(tasks) {
-        currentTask = sortTasks(tasks).firstOrNull()
+    LaunchedEffect(tasks, initialTaskId) {
+        currentTask = tasks.find { it.id == initialTaskId }
+            ?: sortTasks(tasks).firstOrNull()
     }
 
     // ⏱ TIMER STATE from the ViewModel (end-timestamp model)
@@ -219,7 +221,7 @@ fun FocusScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    currentTask!!.time,
+                    currentTask!!.dueTime ?: "",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

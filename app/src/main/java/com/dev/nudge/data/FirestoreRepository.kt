@@ -1,6 +1,7 @@
 package com.dev.nudge.data
 
 import com.dev.nudge.model.Task
+import com.dev.nudge.model.normalized
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
@@ -31,14 +32,7 @@ object FirestoreRepository {
     // 🔥 GET TASKS
     suspend fun getTasks(): List<Task> {
         val snapshot = tasksRef().get().await()
-        return snapshot.documents.map { doc ->
-            val task = doc.toObject(Task::class.java) ?: return@map null
-            if (task.id.isBlank()) {
-                // 🔑 one-time migration for legacy docs without an id
-                doc.reference.update("id", doc.id).await()
-                task.copy(id = doc.id)
-            } else task
-        }.filterNotNull()
+        return snapshot.documents.mapNotNull { fromDoc(it) }
     }
 
     // 🔥 DELETE TASK — by stable id (never by title)
@@ -69,14 +63,7 @@ object FirestoreRepository {
     // 🔥 GET COMPLETED
     suspend fun getCompletedTasks(): List<Task> {
         val snapshot = completedRef().get().await()
-        return snapshot.documents.map { doc ->
-            val task = doc.toObject(Task::class.java) ?: return@map null
-            if (task.id.isBlank()) {
-                // 🔑 one-time migration for legacy docs without an id
-                doc.reference.update("id", doc.id).await()
-                task.copy(id = doc.id)
-            } else task
-        }.filterNotNull()
+        return snapshot.documents.mapNotNull { fromDoc(it) }
     }
 
     suspend fun deleteCompletedTask(task: Task) {
@@ -107,31 +94,30 @@ object FirestoreRepository {
 
     // 🔥 LIVE UPDATES — snapshot listeners (no manual refresh needed)
 
+    /**
+     * 🔑 Shared doc → Task mapping:
+     *  - fills a missing id from the doc name (legacy docs),
+     *  - runs the pre-v3 field migration (ISO dates, dueTime, priority…).
+     */
+    private fun fromDoc(doc: com.google.firebase.firestore.DocumentSnapshot): Task? {
+        val task = doc.toObject(Task::class.java) ?: return null
+        val withId = if (task.id.isBlank()) task.copy(id = doc.id) else task
+        if (task.id.isBlank()) {
+            // best-effort write-back so the doc heals itself
+            doc.reference.update("id", doc.id)
+        }
+        return withId.normalized()
+    }
+
     fun listenTasks(onChanged: (List<Task>) -> Unit): ListenerRegistration =
         tasksRef().addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
-
-            onChanged(snapshot.documents.map { doc ->
-                val task = doc.toObject(Task::class.java) ?: return@map null
-                if (task.id.isBlank()) {
-                    // 🔑 one-time migration for legacy docs without an id
-                    doc.reference.update("id", doc.id)
-                    task.copy(id = doc.id)
-                } else task
-            }.filterNotNull())
+            onChanged(snapshot.documents.mapNotNull { fromDoc(it) })
         }
 
     fun listenCompletedTasks(onChanged: (List<Task>) -> Unit): ListenerRegistration =
         completedRef().addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
-
-            onChanged(snapshot.documents.map { doc ->
-                val task = doc.toObject(Task::class.java) ?: return@map null
-                if (task.id.isBlank()) {
-                    // 🔑 one-time migration for legacy docs without an id
-                    doc.reference.update("id", doc.id)
-                    task.copy(id = doc.id)
-                } else task
-            }.filterNotNull())
+            onChanged(snapshot.documents.mapNotNull { fromDoc(it) })
         }
 }

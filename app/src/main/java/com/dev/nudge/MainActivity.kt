@@ -26,7 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
+import androidx.navigation.navArgument
 import com.dev.nudge.data.ThemeStorage
 import com.dev.nudge.model.Task
 import com.dev.nudge.model.TaskViewModel
@@ -140,11 +142,10 @@ class MainActivity : ComponentActivity() {
                 var focusFullscreen by remember { mutableStateOf(false) }
 
                 LaunchedEffect(currentRoute) {
-                    if (currentRoute != "focus") focusFullscreen = false
+                    if (currentRoute?.startsWith("focus") != true) focusFullscreen = false
                 }
 
                 val tasks by taskViewModel.tasks.collectAsState()
-                val completedTasks by taskViewModel.completedTasks.collectAsState()
 
                 Scaffold(
 
@@ -153,7 +154,9 @@ class MainActivity : ComponentActivity() {
                     snackbarHost = { SnackbarHost(snackbarHostState) },
 
                     floatingActionButton = {
-                        if (currentRoute != "login" && !focusFullscreen) {
+                        if (currentRoute != "login" &&
+                            currentRoute?.startsWith("focus") != true
+                        ) {
                             FloatingActionButton(
                                 onClick = { navController.navigate("add") },
                                 containerColor = SoftBlue,
@@ -166,7 +169,7 @@ class MainActivity : ComponentActivity() {
                     },
 
                     bottomBar = {
-                        if (currentRoute != "login" && !focusFullscreen) {
+                        if (currentRoute != "login" && currentRoute?.startsWith("focus") != true) {
 
                             val barColor =
                                 if (isDarkMode) Color.Black else MaterialTheme.colorScheme.surface
@@ -186,10 +189,10 @@ class MainActivity : ComponentActivity() {
                             ) {
 
                                 NavigationBarItem(
-                                    selected = currentRoute == "home",
-                                    onClick = { navController.navigate("home") },
+                                    selected = currentRoute == "tasks",
+                                    onClick = { navController.navigate("tasks") },
                                     icon = { Icon(Icons.Default.Home, null) },
-                                    label = { Text("Home") },
+                                    label = { Text("Tasks") },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = selectedColor,
                                         selectedTextColor = selectedColor,
@@ -234,7 +237,7 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(
                         navController = navController,
-                        startDestination = "home",
+                        startDestination = "tasks",
                         modifier = Modifier.padding(innerPadding)
                     ) {
 
@@ -244,20 +247,42 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        composable("home") {
-                            HomeScreen(
+                        composable("tasks") {
+                            val tasksSelectedDate by taskViewModel.selectedDate.collectAsState()
+                            val actualSeconds by taskViewModel.actualSecondsByTask.collectAsState()
+                            val hideCompleted by taskViewModel.hideCompleted.collectAsState()
+
+                            TasksScreen(
                                 tasks = tasks,
-                                onRemove = { task -> taskViewModel.completeTask(task) },
+                                selectedDate = tasksSelectedDate,
+                                actualSecondsByTask = actualSeconds,
+                                hideCompleted = hideCompleted,
+                                onSelectDate = { taskViewModel.selectDate(it) },
+                                onToggleHideCompleted = { taskViewModel.toggleHideCompleted() },
+                                onToggleComplete = { task ->
+                                    if (task.isCompleted) {
+                                        taskViewModel.uncompleteTask(task)
+                                    } else {
+                                        taskViewModel.completeTask(task)
+                                    }
+                                },
                                 onEdit = { task -> navController.navigate("edit/${task.id}") },
                                 onDelete = { task ->
                                     taskViewModel.deleteTask(task)
                                     showDeleteUndoSnackbar(task)
-                                }
+                                },
+                                onStart = { task ->
+                                    navController.navigate("focus?taskId=${task.id}")
+                                },
+                                onUpdate = { task -> taskViewModel.updateTask(task) }
                             )
                         }
 
                         composable("add") {
+                            val tasksSelectedDate by taskViewModel.selectedDate.collectAsState()
+
                             AddTaskScreen(
+                                defaultDate = tasksSelectedDate,
                                 onSave = { task ->
                                     // 🔔 arming the reminder lives in TaskViewModel
                                     taskViewModel.addTask(task)
@@ -293,10 +318,20 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        composable("focus") {
+                        composable(
+                            "focus?taskId={taskId}",
+                            arguments = listOf(
+                                navArgument("taskId") {
+                                    type = NavType.StringType
+                                    nullable = true
+                                    defaultValue = null
+                                }
+                            )
+                        ) { backStackEntry ->
                             FocusScreen(
                                 tasks = tasks,
                                 timer = timerViewModel,
+                                initialTaskId = backStackEntry.arguments?.getString("taskId"),
                                 isFullscreen = focusFullscreen,
                                 onFullscreenChange = { focusFullscreen = it },
                                 onDone = { task -> taskViewModel.completeTask(task) },
@@ -319,20 +354,7 @@ class MainActivity : ComponentActivity() {
                                 onLogout = {
                                     // 🧹 wipes local guest data, then signs out
                                     taskViewModel.logout()
-                                },
-                                onViewCompletedClick = {
-                                    navController.navigate("completed")
                                 }
-                            )
-                        }
-
-                        composable("completed") {
-
-                            CompletedTasksScreen(
-                                tasks = completedTasks,
-                                onReAdd = { task -> taskViewModel.reAddTask(task) },
-                                onDelete = { task -> taskViewModel.deleteCompletedTask(task) },
-                                onBack = { navController.popBackStack() }
                             )
                         }
                     }
