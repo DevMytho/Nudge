@@ -199,20 +199,14 @@ class TaskViewModel(
         _actualSecondsByTask.value = map
     }
 
-    fun deleteCompletedTask(task: Task) {
-        if (isLoggedIn()) {
-            scope.launch { FirestoreRepository.deleteCompletedTask(task) }
-        } else {
-            val updated = _completedTasks.value.filter { it.id != task.id }
-            _completedTasks.value = updated
-            scope.launch { TaskStorage.saveCompletedTasks(context, updated) }
-        }
-    }
-
-    /** 🧹 Wipe local guest data, then sign out (so the next user sees nothing). */
+    /**
+     * 🧹 Wipe local guest data — including Room sessions (spec §3.3) — then
+     * sign out, so the next user sees nothing.
+     */
     fun logout() {
         scope.launch {
             TaskStorage.clearAll(context)
+            com.dev.nudge.data.session.SessionRepository.getInstance(context).clearLocal()
             _tasks.value = emptyList()
             _completedTasks.value = emptyList()
             FirebaseAuth.getInstance().signOut()

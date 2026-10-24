@@ -24,8 +24,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.dev.nudge.R
 import com.dev.nudge.data.RingtoneStorage
-import com.dev.nudge.data.TimerState
-import com.dev.nudge.data.TimerStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,20 +64,29 @@ class AlarmService : Service() {
 
         private const val EXTRA_TASK_TITLE = "task_title"
         private const val EXTRA_IS_CRITICAL = "is_critical"
+        private const val EXTRA_TIMER_MESSAGE = "timer_message"
 
         /**
          * Starts ringing.
          *
          * @param taskTitle when non-null (critical task reminder) the ongoing
          *   notification says "Time for {task} to be done" instead of the
-         *   generic "Take a break 🎉" timer message.
+         *   timer message.
+         * @param timerMessage wording for phase-end rings (e.g. break started,
+         *   break over, session complete).
          */
-        fun start(context: Context, taskTitle: String? = null, isCritical: Boolean = false) {
+        fun start(
+            context: Context,
+            taskTitle: String? = null,
+            isCritical: Boolean = false,
+            timerMessage: String? = null
+        ) {
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, AlarmService::class.java).apply {
                     if (taskTitle != null) putExtra(EXTRA_TASK_TITLE, taskTitle)
                     putExtra(EXTRA_IS_CRITICAL, isCritical)
+                    if (timerMessage != null) putExtra(EXTRA_TIMER_MESSAGE, timerMessage)
                 }
             )
         }
@@ -97,30 +104,19 @@ class AlarmService : Service() {
 
         when (intent?.action) {
             ACTION_STOP -> {
+                // Engine state was already reconciled when the alarm fired —
+                // Stop only silences the ring (next phase waits for a tap).
                 stopRinging()
-                // 🧹 back to a fresh timer
-                serviceScope.launch { TimerStorage.saveState(this@AlarmService, TimerState()) }
                 finishService()
                 return START_NOT_STICKY
             }
 
             ACTION_SNOOZE -> {
                 stopRinging()
+                // 🔁 ring again in 5 minutes; timer state is left alone
                 val endAt = System.currentTimeMillis() + TimerAlarmScheduler.SNOOZE_MILLIS
                 if (!TimerAlarmScheduler.schedule(this, endAt)) {
-                    // 🔁 fall back to an inexact alarm so snooze still rings
                     scheduleInexact(endAt)
-                }
-                // keep the UI consistent: 5 more minutes, running
-                serviceScope.launch {
-                    TimerStorage.saveState(
-                        this@AlarmService,
-                        TimerState(
-                            status = com.dev.nudge.data.TimerStatus.RUNNING,
-                            endAtMillis = endAt,
-                            remainingMillis = TimerAlarmScheduler.SNOOZE_MILLIS
-                        )
-                    )
                 }
                 finishService()
                 return START_NOT_STICKY
@@ -128,7 +124,8 @@ class AlarmService : Service() {
 
             else -> startRinging(
                 taskTitle = intent?.getStringExtra(EXTRA_TASK_TITLE),
-                isCritical = intent?.getBooleanExtra(EXTRA_IS_CRITICAL, false) ?: false
+                isCritical = intent?.getBooleanExtra(EXTRA_IS_CRITICAL, false) ?: false,
+                timerMessage = intent?.getStringExtra(EXTRA_TIMER_MESSAGE)
             )
         }
         return START_NOT_STICKY
@@ -144,13 +141,17 @@ class AlarmService : Service() {
 
     // ---------------------------------------------------------------- ring
 
-    private fun startRinging(taskTitle: String? = null, isCritical: Boolean = false) {
+    private fun startRinging(
+        taskTitle: String? = null,
+        isCritical: Boolean = false,
+        timerMessage: String? = null
+    ) {
         if (ringing) return
 
         // 🔔 must be foreground ASAP after startForegroundService().
         //    If the system rejects the FGS start (background start restrictions),
         //    bail out cleanly instead of crashing the cold-started process.
-        if (!showOngoingNotification(taskTitle, isCritical)) {
+        if (!showOngoingNotification(taskTitle, isCritical, timerMessage)) {
             Log.w(TAG, "Could not enter foreground — stopping alarm service")
             stopSelf()
             return
@@ -295,7 +296,8 @@ class AlarmService : Service() {
 
     private fun showOngoingNotification(
         taskTitle: String?,
-        isCritical: Boolean
+        isCritical: Boolean,
+        timerMessage: String? = null
     ): Boolean {
         val stopIntent = PendingIntent.getService(
             this, 1,
@@ -308,7 +310,7 @@ class AlarmService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // 🔴 critical task reminder → name the task; timer finish → "take a break"
+        // 🔴 critical task reminder → name the task; timer end → the phase message
         val contentTitle: String
         val contentText: String
         if (isCritical && !taskTitle.isNullOrBlank()) {
@@ -316,7 +318,7 @@ class AlarmService : Service() {
             contentText = "Time for $taskTitle to be done"
         } else {
             contentTitle = "Time's up!"
-            contentText = "Take a break 🎉"
+            contentText = timerMessage ?: "Take a break 🎉"
         }
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)

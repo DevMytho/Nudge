@@ -26,12 +26,13 @@ class BootReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // ⏱ running timer
+                // ⏱ running timer (phase that is still ahead in wall-clock time)
                 val timer = TimerStorage.loadState(context)
                 if (timer.status == TimerStatus.RUNNING &&
-                    timer.endAtMillis > System.currentTimeMillis()
+                    timer.phase != null &&
+                    timer.endAtEpochMs > System.currentTimeMillis()
                 ) {
-                    TimerAlarmScheduler.schedule(context, timer.endAtMillis)
+                    TimerAlarmScheduler.schedule(context, timer.endAtEpochMs)
                 }
 
                 // 📝 task reminders

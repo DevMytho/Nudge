@@ -2,6 +2,8 @@ package com.dev.nudge.data
 
 import com.dev.nudge.model.Task
 import com.dev.nudge.model.normalized
+import com.dev.nudge.data.session.FocusSessionEntity
+import com.dev.nudge.data.session.SessionSegmentEntity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
@@ -120,4 +122,20 @@ object FirestoreRepository {
             if (error != null || snapshot == null) return@addSnapshotListener
             onChanged(snapshot.documents.mapNotNull { fromDoc(it) })
         }
+
+    // 🔥 FOCUS SESSIONS (spec §3.3) — one-way push, segments embedded as an
+    //    array field; Room stays the local source of truth.
+
+    private fun sessionsRef(uid: String) =
+        db.collection("users").document(uid).collection("sessions")
+
+    suspend fun saveSession(
+        uid: String,
+        session: FocusSessionEntity,
+        segments: List<SessionSegmentEntity>
+    ) {
+        sessionsRef(uid).document(session.id)
+            .set(mapOf("session" to session, "segments" to segments))
+            .await()
+    }
 }

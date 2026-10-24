@@ -53,4 +53,43 @@
     <string name="mark_critical">Mark Critical</string>
     <string name="marked_critical">Marked Critical</string>
     <string name="fill_all_fields">Please fill all fields</string>
+
+    <!-- Focus tab -->
+    <string name="phase_focus">Focus</string>
+    <string name="phase_short_break">Short break</string>
+    <string name="phase_long_break">Long break</string>
+    <string name="focus_start_title">Focus</string>
+    <string name="focus_pick_task">Now focusing on</string>
+    <string name="focus_no_task">No task (free focus)</string>
+    <string name="focus_length">Session length</string>
+    <string name="focus_length_estimate">Estimate (~%1$s left)</string>
+    <string name="focus_length_minutes">%1$d min</string>
+    <string name="focus_length_custom">Custom</string>
+    <string name="session_running">running</string>
+    <string name="session_paused">paused</string>
+    <string name="focus_open_ended">Open-ended</string>
+    <string name="focus_start">Start</string>
+    <string name="focus_pause">Pause</string>
+    <string name="focus_resume">Resume</string>
+    <string name="focus_finish">Finish</string>
+    <string name="focus_take_break">Take a break</string>
+    <string name="focus_mark_done">Mark as Done</string>
+    <string name="focus_adjust_minus">−5 min</string>
+    <string name="focus_adjust_plus">+5 min</string>
+    <string name="focus_no_tasks">No tasks left 🎉</string>
+    <string name="focus_now_focusing">Now focusing on</string>
+    <string name="focus_exit_fullscreen">Exit fullscreen</string>
+    <string name="adjust_negative_blocked">5 minutes would run out — use Finish instead</string>
+    <string name="summary_title">Session finished</string>
+    <string name="summary_focus_time">Focused: %1$s</string>
+    <string name="summary_break_time">Breaks: %1$s</string>
+    <string name="summary_extensions">Extensions: %1$s</string>
+    <string name="summary_cycles">Cycles completed: %1$d</string>
+    <string name="summary_close">Close</string>
+    <string name="done_sheet_title">Mark %1$s as done?</string>
+    <string name="done_sheet_yes">Done</string>
+    <string name="done_sheet_not_yet">Not yet</string>
+    <string name="notif_ring_focus_end">Time\'s up! Take a break 🎉</string>
+    <string name="notif_ring_break_over">Break\'s over — back to focus 💪</string>
+    <string name="notif_ring_session_done">Session complete 🎉</string>
 </resources>

@@ -44,7 +44,18 @@ class MainActivity : ComponentActivity() {
 
     // 🔥 Logic lives in ViewModels (StateFlow-backed); one instance per activity
     private val taskViewModel by lazy { TaskViewModel(applicationContext) }
-    private val timerViewModel by lazy { TimerViewModel(applicationContext) }
+    private val timerViewModel by lazy {
+        TimerViewModel(
+            applicationContext,
+            com.dev.nudge.data.session.SessionRepository.getInstance(applicationContext)
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 🔁 reconcile whatever happened while the app was backgrounded
+        timerViewModel.refresh()
+    }
 
     override fun onDestroy() {
         taskViewModel.close()
@@ -146,6 +157,13 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val tasks by taskViewModel.tasks.collectAsState()
+
+            // 📊 focused seconds per task, straight from Room sessions
+            LaunchedEffect(Unit) {
+                timerViewModel.focusSecondsByTask.collect { map ->
+                    taskViewModel.setActualSeconds(map)
+                }
+            }
 
                 Scaffold(
 
