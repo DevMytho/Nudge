@@ -71,6 +71,9 @@ class SessionRepository(private val dao: SessionDao) {
                 .mapValues { (_, pairs) -> pairs.toMap() }
         }
 
+    fun observeSegmentsForSession(sessionId: String): Flow<List<SessionSegmentEntity>> =
+        dao.observeSegmentsForSession(sessionId)
+
     suspend fun segmentsForSession(sessionId: String): List<SessionSegmentEntity> =
         dao.segmentsForSession(sessionId)
 

@@ -9,6 +9,7 @@ import com.dev.nudge.data.UserSettings
 import com.dev.nudge.data.session.FocusSessionEntity
 import com.dev.nudge.data.session.SessionMode
 import com.dev.nudge.data.session.SessionRepository
+import com.dev.nudge.data.session.SessionSegmentEntity
 import com.dev.nudge.data.session.SessionState
 import com.dev.nudge.utils.NotificationHelper
 import com.dev.nudge.utils.TimerAlarmScheduler
@@ -17,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -73,6 +75,17 @@ class TimerViewModel(
     private val _settings = MutableStateFlow(UserSettings())
     val settings: StateFlow<UserSettings> = _settings
 
+    /**
+     * Session-only length overrides set by the Pomodoro start screen
+     * (spec §7). In-memory: they apply while this process lives; after
+     * process death the next phase falls back to saved settings — noted
+     * in docs/DECISIONS.md.
+     */
+    private val _sessionOverrides = MutableStateFlow<UserSettings?>(null)
+
+    private fun engineSettings(): UserSettings =
+        _sessionOverrides.value ?: _settings.value
+
     private val _summary = MutableSharedFlow<TimerSessionSummary>(extraBufferCapacity = 1)
     val summary: SharedFlow<TimerSessionSummary> = _summary
 
@@ -103,13 +116,14 @@ class TimerViewModel(
         val loaded = TimerStorage.loadState(context)
         _settings.value = SettingsStorage.load(context)
 
-        val result = TimerEngine.reconcile(loaded, clock.nowMillis(), _settings.value)
+        val result = TimerEngine.reconcile(loaded, clock.nowMillis(), engineSettings())
         if (result.changed) {
             applyResult(result)
         } else {
             // no phase ended — but storage may have been written by
             // TimerAlarmReceiver while this ViewModel was alive
             _state.value = result.newState
+            if (!result.newState.isActive()) _sessionOverrides.value = null
         }
     }
 
@@ -120,10 +134,12 @@ class TimerViewModel(
         taskId: String?,
         taskTitle: String,
         lengthMinutes: Int?,          // null = open-ended stopwatch
-        targetCycles: Int
+        targetCycles: Int,
+        overrides: UserSettings? = null // session-only lengths (Pomodoro)
     ) {
         scope.launch {
             _settings.value = SettingsStorage.load(context)
+            _sessionOverrides.value = overrides
             val now = clock.nowMillis()
             val plannedSec = (lengthMinutes ?: 0).coerceAtLeast(0) * 60
 
@@ -195,7 +211,7 @@ class TimerViewModel(
         scope.launch {
             val result = TimerEngine.skipPhase(
                 state = _state.value,
-                settings = _settings.value,
+                settings = engineSettings(),
                 nowMillis = clock.nowMillis(),
                 autoStart = _settings.value.autoStartNextPhase
             )
@@ -213,7 +229,7 @@ class TimerViewModel(
     /** Focus mode: log the current block and start a short break. */
     fun takeBreak() {
         scope.launch {
-            val breakMin = _settings.value.shortBreakMinutes
+            val breakMin = engineSettings().shortBreakMinutes
             val result = TimerEngine.takeBreak(
                 state = _state.value,
                 nowMillis = clock.nowMillis(),
@@ -235,6 +251,7 @@ class TimerViewModel(
         result.closedSegment?.let { sessions.saveSegment(it) }
 
         if (result.sessionFinished) {
+            _sessionOverrides.value = null
             val sessionId = result.closedSegment?.sessionId
                 ?: result.totals?.sessionId
                 ?: _state.value.sessionId
@@ -249,6 +266,10 @@ class TimerViewModel(
         armAlarmFor(result.newState)
         updateSessionNotification(result.newState)
     }
+
+    /** Live segment log of one session (Pomodoro tab). */
+    fun segmentsForSession(sessionId: String): Flow<List<SessionSegmentEntity>> =
+        sessions.observeSegmentsForSession(sessionId)
 
     private suspend fun emitSummary(sessionId: String, totals: TimerState) {
         val segments = sessions.segmentsForSession(sessionId)

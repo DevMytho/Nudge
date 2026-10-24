@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -221,10 +222,24 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 NavigationBarItem(
-                                    selected = currentRoute == "focus",
+                                    selected = currentRoute?.startsWith("focus") == true,
                                     onClick = { navController.navigate("focus") },
                                     icon = { Icon(Icons.Default.Schedule, null) },
                                     label = { Text("Focus") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = selectedColor,
+                                        selectedTextColor = selectedColor,
+                                        unselectedIconColor = unselectedColor,
+                                        unselectedTextColor = unselectedColor,
+                                        indicatorColor = indicatorColor
+                                    )
+                                )
+
+                                NavigationBarItem(
+                                    selected = currentRoute?.startsWith("pomodoro") == true,
+                                    onClick = { navController.navigate("pomodoro") },
+                                    icon = { Icon(Icons.Default.PlayArrow, null) },
+                                    label = { Text("Pomodoro") },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = selectedColor,
                                         selectedTextColor = selectedColor,
@@ -353,7 +368,27 @@ class MainActivity : ComponentActivity() {
                                 isFullscreen = focusFullscreen,
                                 onFullscreenChange = { focusFullscreen = it },
                                 onDone = { task -> taskViewModel.completeTask(task) },
-                                onBack = { navController.popBackStack() }
+                                onBack = { navController.popBackStack() },
+                                onGoToPomodoro = { navController.navigate("pomodoro") }
+                            )
+                        }
+
+                        composable(
+                            "pomodoro?taskId={taskId}",
+                            arguments = listOf(
+                                navArgument("taskId") {
+                                    type = NavType.StringType
+                                    nullable = true
+                                    defaultValue = null
+                                }
+                            )
+                        ) { backStackEntry ->
+                            PomodoroScreen(
+                                tasks = tasks,
+                                timer = timerViewModel,
+                                initialTaskId = backStackEntry.arguments?.getString("taskId"),
+                                onDone = { task -> taskViewModel.completeTask(task) },
+                                onGoToFocus = { navController.navigate("focus") }
                             )
                         }
 

@@ -92,4 +92,22 @@
     <string name="notif_ring_focus_end">Time\'s up! Take a break 🎉</string>
     <string name="notif_ring_break_over">Break\'s over — back to focus 💪</string>
     <string name="notif_ring_session_done">Session complete 🎉</string>
+
+    <!-- Phase 3: Pomodoro tab -->
+    <string name="pomodoro_title">Pomodoro</string>
+    <string name="pomodoro_task">Link a task (optional)</string>
+    <string name="pomodoro_lengths">Session lengths</string>
+    <string name="pomodoro_focus_min">Focus length</string>
+    <string name="pomodoro_short_break_min">Short break</string>
+    <string name="pomodoro_long_break_min">Long break</string>
+    <string name="pomodoro_blocks_before_long">Blocks before long break</string>
+    <string name="pomodoro_target_cycles">Focus blocks this session</string>
+    <string name="pomodoro_target_cycles_unit">%1$d blocks</string>
+    <string name="pomodoro_overrides_hint">Length overrides apply to this session only</string>
+    <string name="pomodoro_cycle_of">Cycle %1$d of %2$d</string>
+    <string name="pomodoro_skip">Skip phase</string>
+    <string name="pomodoro_log">Session log</string>
+    <string name="log_ext_format">%1$s (+%2$s ext)</string>
+    <string name="running_in_other_tab">Session running in %1$s</string>
+    <string name="go_to_tab">Go to %1$s</string>
 </resources>

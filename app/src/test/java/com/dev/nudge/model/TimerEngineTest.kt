@@ -183,6 +183,38 @@ class TimerEngineTest {
     // ------------------------------------------------------------- reconcile
 
     @Test
+    fun `skipping a never-started break logs zero real seconds not planned`() {
+        // focus ran to completion, next phase is a PAUSED short break
+        val onBreak = TimerEngine.advanceAfterCompletedPhase(
+            pomodoroSession(), settings, now + 25 * 60 * 1000L, autoStart = false
+        ).newState
+
+        val result = TimerEngine.skipPhase(onBreak, settings, now + 26 * 60 * 1000L, autoStart = false)
+
+        assertTrue(result.changed)
+        val seg = result.closedSegment!!
+        assertEquals(SegmentType.SHORT_BREAK, seg.segmentType)
+        assertEquals(0, seg.actualSec) // never ran → real seconds, not the planned 5 min
+        assertFalse(seg.completed)
+    }
+
+    @Test
+    fun `skipping a running break logs the shortened real break time`() {
+        val end = now + 25 * 60 * 1000L
+        val onBreak = TimerEngine.advanceAfterCompletedPhase(
+            pomodoroSession(), settings, end, autoStart = true
+        ).newState // break auto-started at `end`
+
+        val result = TimerEngine.skipPhase(onBreak, settings, end + 2 * 60_000L, autoStart = false)
+
+        val seg = result.closedSegment!!
+        assertEquals(SegmentType.SHORT_BREAK, seg.segmentType)
+        assertEquals(120, seg.actualSec) // 2 min of the 5 min break actually ran
+        assertFalse(seg.completed)
+        assertEquals(2, result.newState.cycleIndex) // advanced to the next focus block
+    }
+
+    @Test
     fun `reconcile is a no-op while the phase is still running`() {
         val s = focusSession()
         val result = TimerEngine.reconcile(s, now + 60_000L, settings)

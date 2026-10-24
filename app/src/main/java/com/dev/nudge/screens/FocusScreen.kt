@@ -58,7 +58,8 @@ fun FocusScreen(
     isFullscreen: Boolean,
     onFullscreenChange: (Boolean) -> Unit,
     onDone: (Task) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onGoToPomodoro: () -> Unit = {}
 ) {
 
     val context = LocalContext.current
@@ -195,7 +196,13 @@ fun FocusScreen(
             }
         }
 
-        if (!state.isActive()) {
+        if (state.isActive() && state.mode == SessionMode.POMODORO) {
+            // 🔒 only one active session at a time (spec §10)
+            com.dev.nudge.components.SessionElsewhere(
+                tabLabel = stringResource(R.string.pomodoro_title),
+                onGoTo = onGoToPomodoro
+            )
+        } else if (!state.isActive()) {
             StartContent(
                 tasks = tasks,
                 settings = settings,
@@ -608,7 +615,7 @@ private fun RunningContent(
 // --------------------------------------------------------------- summary UI
 
 @Composable
-private fun SessionSummaryContent(
+internal fun SessionSummaryContent(
     summary: TimerSessionSummary,
     task: Task?,
     onDone: () -> Unit,
