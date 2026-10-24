@@ -110,4 +110,29 @@
     <string name="log_ext_format">%1$s (+%2$s ext)</string>
     <string name="running_in_other_tab">Session running in %1$s</string>
     <string name="go_to_tab">Go to %1$s</string>
+
+    <!-- Phase 4: Progress tab -->
+    <string name="progress_title">Progress</string>
+    <string name="progress_calendar">Calendar</string>
+    <string name="streak_current_label">Current streak</string>
+    <string name="streak_best_label">Best streak</string>
+    <string name="streak_day_count">1 day</string>
+    <string name="streak_days_count">%1$d days</string>
+    <string name="stats_week_change_label">This week vs last</string>
+    <string name="stats_best_day_label">Best day</string>
+    <string name="stats_month_total_label">Focus this month</string>
+    <string name="chart_focus_title">Focused time</string>
+    <string name="chart_range_7">7 days</string>
+    <string name="chart_range_30">30 days</string>
+    <string name="chart_goal_label">Goal %1$s</string>
+    <string name="chart_accuracy_title">Estimate accuracy</string>
+    <string name="chart_accuracy_line_label">100 % of estimate</string>
+    <string name="calendar_prev_month">Previous month</string>
+    <string name="calendar_next_month">Next month</string>
+    <string name="day_detail_done">Done</string>
+    <string name="day_detail_focus">Focus</string>
+    <string name="day_detail_break">Break</string>
+    <string name="day_detail_cycles">Cycles</string>
+    <string name="day_detail_sessions">Sessions</string>
+    <string name="day_detail_empty">Nothing planned or focused this day</string>
 </resources>

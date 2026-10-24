@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,6 +52,9 @@ class MainActivity : ComponentActivity() {
             com.dev.nudge.data.session.SessionRepository.getInstance(applicationContext)
         )
     }
+    private val progressViewModel by lazy {
+        com.dev.nudge.model.ProgressViewModel(applicationContext)
+    }
 
     override fun onResume() {
         super.onResume()
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         taskViewModel.close()
         timerViewModel.close()
+        progressViewModel.close()
         super.onDestroy()
     }
 
@@ -250,6 +255,20 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 NavigationBarItem(
+                                    selected = currentRoute?.startsWith("progress") == true,
+                                    onClick = { navController.navigate("progress") },
+                                    icon = { Icon(Icons.Default.Timeline, null) },
+                                    label = { Text("Progress") },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = selectedColor,
+                                        selectedTextColor = selectedColor,
+                                        unselectedIconColor = unselectedColor,
+                                        unselectedTextColor = unselectedColor,
+                                        indicatorColor = indicatorColor
+                                    )
+                                )
+
+                                NavigationBarItem(
                                     selected = currentRoute == "settings",
                                     onClick = { navController.navigate("settings") },
                                     icon = { Icon(Icons.Default.Settings, null) },
@@ -389,6 +408,13 @@ class MainActivity : ComponentActivity() {
                                 initialTaskId = backStackEntry.arguments?.getString("taskId"),
                                 onDone = { task -> taskViewModel.completeTask(task) },
                                 onGoToFocus = { navController.navigate("focus") }
+                            )
+                        }
+
+                        composable("progress") {
+                            ProgressScreen(
+                                tasks = tasks,
+                                progress = progressViewModel
                             )
                         }
 

@@ -74,6 +74,9 @@ class SessionRepository(private val dao: SessionDao) {
     fun observeSegmentsForSession(sessionId: String): Flow<List<SessionSegmentEntity>> =
         dao.observeSegmentsForSession(sessionId)
 
+    fun observeSegmentsForDate(date: String): Flow<List<SessionSegmentEntity>> =
+        dao.observeSegmentsForDate(date)
+
     suspend fun segmentsForSession(sessionId: String): List<SessionSegmentEntity> =
         dao.segmentsForSession(sessionId)
 

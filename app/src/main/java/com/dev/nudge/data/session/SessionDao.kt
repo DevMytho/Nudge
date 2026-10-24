@@ -38,6 +38,14 @@ interface SessionDao {
     @Query("SELECT * FROM session_segments WHERE sessionId = :sessionId ORDER BY `index`")
     fun observeSegmentsForSession(sessionId: String): Flow<List<SessionSegmentEntity>>
 
+    /** All segments of one local day (day detail sheet / session timeline). */
+    @Query(
+        "SELECT s.* FROM session_segments s " +
+            "INNER JOIN focus_sessions ses ON ses.id = s.sessionId " +
+            "WHERE ses.date = :date ORDER BY ses.startedAt, s.sessionId, s.`index`"
+    )
+    fun observeSegmentsForDate(date: String): Flow<List<SessionSegmentEntity>>
+
     @Query("SELECT * FROM focus_sessions WHERE date = :date ORDER BY startedAt DESC")
     fun observeSessionsForDate(date: String): Flow<List<FocusSessionEntity>>
 

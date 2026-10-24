@@ -81,6 +81,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // java.time (LocalDate streak/stats logic) on minSdk 24 — spec §7
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -122,4 +124,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // java.time on minSdk 24 (StreakCalculator/StatsCalculator use LocalDate)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
