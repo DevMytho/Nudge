@@ -82,6 +82,33 @@ class SessionRepository(private val dao: SessionDao) {
 
     suspend fun sessionById(id: String): FocusSessionEntity? = dao.sessionById(id)
 
+    // ------------------------------------------------------- backup (§9)
+
+    /** Everything needed for a backup export: sessions grouped with segments. */
+    suspend fun allSessionsWithSegments(): List<Pair<FocusSessionEntity, List<SessionSegmentEntity>>> {
+        val segments = dao.allSegments().groupBy { it.sessionId }
+        return dao.allSessions().map { it to (segments[it.id] ?: emptyList()) }
+    }
+
+    suspend fun allSessionIds(): Set<String> = dao.allSessionIds().toSet()
+
+    /**
+     * 📥 Restore sessions from a backup: only ids the device doesn't have
+     * are inserted (local wins). Best-effort Firestore push for signed-in
+     * users. @return how many sessions were actually added.
+     */
+    suspend fun restoreSessions(backed: List<com.dev.nudge.data.backup.BackupSession>): Int {
+        var added = 0
+        for (b in backed) {
+            if (dao.sessionById(b.session.id) != null) continue
+            dao.upsertSession(b.session)
+            b.segments.forEach { dao.upsertSegment(it) }
+            added++
+            pushToFirestore(b.session)
+        }
+        return added
+    }
+
     // ---------------------------------------------------- Firestore push
 
     private suspend fun pushToFirestore(session: FocusSessionEntity) {

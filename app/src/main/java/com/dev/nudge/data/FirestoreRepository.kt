@@ -68,6 +68,13 @@ object FirestoreRepository {
         return snapshot.documents.mapNotNull { fromDoc(it) }
     }
 
+    // 🔥 RESTORE a completed task straight into the completed collection
+    //    (no active-side delete: it was never active on this device)
+    suspend fun restoreCompleted(task: Task) {
+        val id = task.id.ifBlank { UUID.randomUUID().toString() }
+        completedRef().document(id).set(task.copy(id = id)).await()
+    }
+
     suspend fun deleteCompletedTask(task: Task) {
         if (task.id.isBlank()) return
 

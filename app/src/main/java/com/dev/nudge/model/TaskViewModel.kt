@@ -200,6 +200,40 @@ class TaskViewModel(
     }
 
     /**
+     * 📥 Apply a restored backup (spec §9): the merged lists become the new
+     * state and are persisted locally; newly restored tasks are pushed to
+     * Firestore when signed in; every active future task re-arms its reminder
+     * (cancel first — re-arming is idempotent).
+     */
+    fun applyRestored(
+        mergedActive: List<Task>,
+        mergedCompleted: List<Task>,
+        addedActive: List<Task>,
+        addedCompleted: List<Task>
+    ) {
+        _tasks.value = mergedActive
+        _completedTasks.value = mergedCompleted
+
+        scope.launch {
+            TaskStorage.saveTasks(context, mergedActive)
+            TaskStorage.saveCompletedTasks(context, mergedCompleted)
+            if (isLoggedIn()) {
+                addedActive.forEach { task ->
+                    runCatching { FirestoreRepository.addTask(task) }
+                }
+                addedCompleted.forEach { task ->
+                    runCatching { FirestoreRepository.restoreCompleted(task) }
+                }
+            }
+        }
+
+        mergedActive.forEach { task ->
+            reminders.cancel(task)
+            reminders.scheduleIfFuture(task)
+        }
+    }
+
+    /**
      * 🧹 Wipe local guest data — including Room sessions (spec §3.3) — then
      * sign out, so the next user sees nothing.
      */

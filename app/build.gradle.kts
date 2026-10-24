@@ -115,7 +115,8 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.11.0"))
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth:22.3.0")
-    implementation("com.google.android.gms:play-services-auth:20.7.0")
+    // 21.6.0: AuthorizationClient (Drive backup, spec §9) + GoogleSignIn both present
+    implementation(libs.play.services.auth)
     implementation("com.google.firebase:firebase-auth-ktx:23.0.0")
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("com.google.firebase:firebase-firestore-ktx:25.0.0")

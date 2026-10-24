@@ -58,6 +58,17 @@ interface SessionDao {
     @Query("SELECT * FROM focus_sessions ORDER BY startedAt DESC")
     fun observeAllSessions(): Flow<List<FocusSessionEntity>>
 
+    // --------------------------------------------------- backup (suspend)
+
+    @Query("SELECT * FROM focus_sessions ORDER BY startedAt DESC")
+    suspend fun allSessions(): List<FocusSessionEntity>
+
+    @Query("SELECT * FROM session_segments ORDER BY sessionId, `index`")
+    suspend fun allSegments(): List<SessionSegmentEntity>
+
+    @Query("SELECT id FROM focus_sessions")
+    suspend fun allSessionIds(): List<String>
+
     @Query("SELECT * FROM focus_sessions WHERE id = :id")
     suspend fun sessionById(id: String): FocusSessionEntity?
 

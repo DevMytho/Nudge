@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -27,17 +28,25 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
-import com.dev.nudge.data.ThemeStorage
+import com.dev.nudge.data.AccentColor
+import com.dev.nudge.data.SettingsStorage
+import com.dev.nudge.data.ThemeMode
+import com.dev.nudge.data.UserSettings
+import com.dev.nudge.data.backup.BackupManager
 import com.dev.nudge.model.Task
 import com.dev.nudge.model.TaskViewModel
 import com.dev.nudge.model.TimerViewModel
 import com.dev.nudge.screens.*
 import com.dev.nudge.ui.theme.*
 import com.dev.nudge.utils.NotificationHelper
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
 val CardBeige = Color(0xFFEDE3DC)
@@ -96,15 +105,52 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
 
-            var isDarkMode by remember { mutableStateOf(false) }
+            // ⚙️ User settings (Phase 5): loaded once into state; every
+            //    settings change flows through persistSettings below.
+            var appSettings by remember { mutableStateOf<UserSettings?>(null) }
+            var authName by remember {
+                mutableStateOf(FirebaseAuth.getInstance().currentUser?.displayName)
+            }
 
             LaunchedEffect(Unit) {
-                isDarkMode = ThemeStorage.loadTheme(context)
+                SettingsStorage.migrateLegacyTheme(context)
+                appSettings = SettingsStorage.load(context)
+            }
+
+            DisposableEffect(Unit) {
+                val listener = FirebaseAuth.AuthStateListener {
+                    authName = it.currentUser?.displayName
+                }
+                FirebaseAuth.getInstance().addAuthStateListener(listener)
+                onDispose { FirebaseAuth.getInstance().removeAuthStateListener(listener) }
             }
 
             // 🔥 Logic lives in ViewModels (StateFlow-backed)
             val taskViewModel = this@MainActivity.taskViewModel
             val timerViewModel = this@MainActivity.timerViewModel
+            val progressViewModel = this@MainActivity.progressViewModel
+
+            fun persistSettings(updated: UserSettings) {
+                appSettings = updated
+                scope.launch {
+                    SettingsStorage.save(context, updated)
+                    timerViewModel.reloadSettings()
+                    progressViewModel.reloadSettings()
+                }
+            }
+
+            // ☁️ Auto-backup when the app leaves the foreground (silent —
+            //    background flows never pop consent UI).
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_STOP) {
+                        scope.launch { BackupManager.autoBackup(context) }
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
 
             // 🔔 One place that nudges the user for the two permissions the
             //    reminder system displays under. Scheduling itself (setAlarmClock)
@@ -149,7 +195,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            NudgeTheme(darkTheme = isDarkMode) {
+            val loadedSettings = appSettings
+
+            val darkMode = when (loadedSettings?.themeMode ?: ThemeMode.SYSTEM) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+
+            NudgeTheme(
+                darkTheme = darkMode,
+                accent = loadedSettings?.accentColor ?: AccentColor.BLUE
+            ) {
+                val settings = loadedSettings ?: return@NudgeTheme
+                val greetingName = settings.displayName
+                    ?.takeIf { it.isNotBlank() } ?: authName
 
                 val navController = rememberNavController()
                 val currentRoute =
@@ -175,10 +235,9 @@ class MainActivity : ComponentActivity() {
 
                     containerColor = MaterialTheme.colorScheme.background,
 
-                    snackbarHost = { SnackbarHost(snackbarHostState) },
-
-                    floatingActionButton = {
+                    snackbarHost = { SnackbarHost(snackbarHostState) },                        floatingActionButton = {
                         if (currentRoute != "login" &&
+                            currentRoute != "onboarding" &&
                             currentRoute?.startsWith("focus") != true
                         ) {
                             FloatingActionButton(
@@ -193,23 +252,25 @@ class MainActivity : ComponentActivity() {
                     },
 
                     bottomBar = {
-                        if (currentRoute != "login" && currentRoute?.startsWith("focus") != true) {
+                        if (currentRoute != "login" &&
+                            currentRoute != "onboarding" &&
+                            currentRoute?.startsWith("focus") != true) {
 
                             val barColor =
-                                if (isDarkMode) Color.Black else MaterialTheme.colorScheme.surface
+                                if (darkMode) Color.Black else MaterialTheme.colorScheme.surface
 
                             val selectedColor =
-                                if (isDarkMode) CardBeige else Color(0xFF5AA9FF)
+                                if (darkMode) CardBeige else Color(0xFF5AA9FF)
 
                             val unselectedColor =
-                                if (isDarkMode) Color.Gray else MaterialTheme.colorScheme.onSurfaceVariant
+                                if (darkMode) Color.Gray else MaterialTheme.colorScheme.onSurfaceVariant
 
                             val indicatorColor =
-                                if (isDarkMode) Color(0xFF1E1E1E) else Color(0xFFDCEBFF)
+                                if (darkMode) Color(0xFF1E1E1E) else Color(0xFFDCEBFF)
 
                             NavigationBar(
                                 containerColor = barColor,
-                                tonalElevation = if (isDarkMode) 0.dp else 3.dp
+                                tonalElevation = if (darkMode) 0.dp else 3.dp
                             ) {
 
                                 NavigationBarItem(
@@ -289,9 +350,32 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(
                         navController = navController,
-                        startDestination = "tasks",
+                        startDestination =
+                            if (!settings.onboardingCompleted) "onboarding" else "tasks",
                         modifier = Modifier.padding(innerPadding)
                     ) {
+
+                        composable("onboarding") {
+                            OnboardingScreen(
+                                onRequestPermissions = {
+                                    promptReminderPermissionsIfNeeded()
+                                },
+                                onSignIn = {
+                                    navController.navigate("login") {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onDone = {
+                                    persistSettings(
+                                        (appSettings ?: settings)
+                                            .copy(onboardingCompleted = true)
+                                    )
+                                    navController.navigate("tasks") {
+                                        popUpTo("onboarding") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
 
                         composable("login") {
                             LoginScreen {
@@ -309,6 +393,7 @@ class MainActivity : ComponentActivity() {
                                 selectedDate = tasksSelectedDate,
                                 actualSecondsByTask = actualSeconds,
                                 hideCompleted = hideCompleted,
+                                personalName = greetingName,
                                 onSelectDate = { taskViewModel.selectDate(it) },
                                 onToggleHideCompleted = { taskViewModel.toggleHideCompleted() },
                                 onToggleComplete = { task ->
@@ -420,11 +505,8 @@ class MainActivity : ComponentActivity() {
 
                         composable("settings") {
                             SettingsScreen(
-                                isDarkMode = isDarkMode,
-                                onToggleTheme = {
-                                    isDarkMode = it
-                                    scope.launch { ThemeStorage.saveTheme(context, it) }
-                                },
+                                settings = settings,
+                                onSettingsChange = { updated -> persistSettings(updated) },
                                 onLoginClick = {
                                     navController.navigate("login") {
                                         launchSingleTop = true
@@ -433,6 +515,20 @@ class MainActivity : ComponentActivity() {
                                 onLogout = {
                                     // 🧹 wipes local guest data, then signs out
                                     taskViewModel.logout()
+                                },
+                                onReplayTutorial = {
+                                    navController.navigate("onboarding") {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onRestore = { json ->
+                                    BackupManager.restore(
+                                        context = context,
+                                        json = json,
+                                        localActive = tasks,
+                                        localCompleted = taskViewModel.completedTasks.value,
+                                        applyTasks = taskViewModel::applyRestored
+                                    )
                                 }
                             )
                         }

@@ -69,13 +69,28 @@ object SettingsStorage {
         val STREAK_MIN = intPreferencesKey("streak_min_minutes")
         val WEEK_STARTS = stringPreferencesKey("week_starts_on")
         val HAPTICS = booleanPreferencesKey("haptics_enabled")
-        val LAST_BACKUP = intPreferencesKey("last_backup_at") // stored as int? no — see below
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val DRIVE_EMAIL = stringPreferencesKey("drive_account_email")
     }
 
-    // epoch millis exceeds Int, so keep a Long-typed key separately
+    // epoch millis exceeds Int, hence a Long-typed key
     private val LAST_BACKUP_AT = androidx.datastore.preferences.core.longPreferencesKey("last_backup_at")
+
+    /**
+     * 🔁 One-time migration of the pre-v3 dark-mode toggle (spec §5): an
+     * explicit old choice becomes DARK/LIGHT; devices that never touched
+     * the old toggle keep the new SYSTEM default. Clears the legacy store.
+     */
+    suspend fun migrateLegacyTheme(context: Context) {
+        val p = context.settingsDataStore.data.first()
+        if (p[Keys.THEME_MODE] != null) return // already migrated / chosen
+        val legacy = ThemeStorage.loadLegacyOrNull(context) ?: return
+        save(
+            context,
+            load(context).copy(themeMode = if (legacy) ThemeMode.DARK else ThemeMode.LIGHT)
+        )
+        ThemeStorage.clearLegacy(context)
+    }
 
     suspend fun load(context: Context): UserSettings {
         return try {

@@ -51,6 +51,7 @@ fun TasksScreen(
     selectedDate: String,
     actualSecondsByTask: Map<String, Int>,
     hideCompleted: Boolean,
+    personalName: String? = null,
     onSelectDate: (String) -> Unit,
     onToggleHideCompleted: () -> Unit,
     onToggleComplete: (Task) -> Unit,
@@ -164,7 +165,9 @@ fun TasksScreen(
             LargeTopAppBar(
                 title = {
                     Column {
-                        Text(greeting())
+                        Text(
+                            text = greeting() + (personalName?.let { ", $it" } ?: "")
+                        )
                         Text(
                             text = formatDisplayDate(selectedDate),
                             style = MaterialTheme.typography.titleMedium,

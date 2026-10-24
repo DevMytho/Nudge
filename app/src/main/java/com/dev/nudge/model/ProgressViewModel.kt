@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  * only exposes flows.
  */
 class ProgressViewModel(
-    context: Context,
+    private val context: Context,
     private val sessions: SessionRepository = SessionRepository.getInstance(context)
 ) {
 
@@ -48,6 +48,11 @@ class ProgressViewModel(
     /** Segments of one local day, ordered by session start (day detail). */
     fun segmentsForDate(date: String): Flow<List<SessionSegmentEntity>> =
         sessions.observeSegmentsForDate(date)
+
+    /** Re-read settings after the user edits them in Settings (Phase 5). */
+    fun reloadSettings() {
+        scope.launch { _settings.value = SettingsStorage.load(context) }
+    }
 
     fun close() {
         scope.cancel()

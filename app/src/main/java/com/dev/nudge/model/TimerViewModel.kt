@@ -112,6 +112,11 @@ class TimerViewModel(
         scope.launch { refreshInternal() }
     }
 
+    /** Re-read settings after the user edits them in Settings (Phase 5). */
+    fun reloadSettings() {
+        scope.launch { _settings.value = SettingsStorage.load(context) }
+    }
+
     private suspend fun refreshInternal() {
         val loaded = TimerStorage.loadState(context)
         _settings.value = SettingsStorage.load(context)
