@@ -1,7 +1,9 @@
 package com.dev.nudge.model
 
 import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.PropertyName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
 /**
  * 🔥 Priority is typed in code. It is stored as a plain string
@@ -57,8 +59,18 @@ data class Task(
 
     // ---- legacy (pre-v3) fields kept so old local JSON / Firestore docs
     // ---- still deserialize; migrated by [normalized] on every read.
+    // ----
+    // ---- ⚠️ The legacy flag must NOT be named `isCritical`: Kotlin then
+    // ---- generates isCritical() which Firestore resolves to the same bean
+    // ---- property as getCritical() → "Found conflicting getters for name
+    // ---- isCritical" and every read/write of Task throws. The property is
+    // ---- renamed instead; the wire/storage names stay "isCritical" via
+    // ---- @PropertyName (Firestore) and @SerialName (local JSON).
     val time: String? = null,
-    val isCritical: Boolean = false
+    @field:PropertyName("isCritical")
+    @get:PropertyName("isCritical")
+    @SerialName("isCritical")
+    val legacyIsCritical: Boolean = false
 ) {
     /** Typed priority view; tolerates legacy "High"/"Medium"/"Low". */
     val priorityLevel: Priority
@@ -69,7 +81,7 @@ data class Task(
  * 🔄 One-time (idempotent) migration applied on every read boundary:
  *  - dd-MM-yyyy dates → ISO yyyy-MM-dd
  *  - legacy `time` → `dueTime`
- *  - legacy `isCritical` → `critical`
+ *  - legacy `isCritical` (stored as [Task.legacyIsCritical]) → `critical`
  *  - legacy capitalized priority → [Priority] name
  *  - legacy tasks without `order` get one derived from `createdAt`
  */
@@ -83,8 +95,8 @@ fun Task.normalized(): Task {
         date = TaskUtils.normalizeLegacyDate(date),
         dueTime = dueTime ?: time?.takeIf { it.isNotBlank() },
         priority = priorityLevel.name,
-        critical = critical || isCritical,
-        isCritical = false,
+        critical = critical || legacyIsCritical,
+        legacyIsCritical = false,
         time = null,
         order = migratedOrder
     )

@@ -284,7 +284,7 @@ class TaskUtilsTest {
             date = "10-06-2026",          // dd-MM-yyyy
             time = "10:30",               // legacy field → dueTime
             priority = "High",            // legacy capitalized
-            isCritical = true,            // legacy flag
+            legacyIsCritical = true,      // legacy flag (wire name "isCritical")
             isCompleted = false,
             createdAt = 1_770_000_000_000L
         ).normalized()
@@ -293,7 +293,7 @@ class TaskUtilsTest {
         assertEquals("10:30", legacy.dueTime)
         assertEquals(Priority.HIGH, legacy.priorityLevel)
         assertEquals(true, legacy.critical)
-        assertEquals(false, legacy.isCritical)
+        assertEquals(false, legacy.legacyIsCritical)
         assertEquals((1_770_000_000_000L / 60_000L).toInt(), legacy.order)
     }
 
