@@ -7,8 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import com.dev.nudge.MainActivity
-import java.text.SimpleDateFormat
-import java.util.*
+import com.dev.nudge.model.TaskUtils
 
 object NotificationScheduler {
 
@@ -40,12 +39,7 @@ object NotificationScheduler {
 
             if (date.isBlank() || time.isBlank()) return
 
-            val sdf = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-            val taskDateTime = sdf.parse("$date $time") ?: return
-
-            val triggerTime = taskDateTime.time
-
-            if (triggerTime <= System.currentTimeMillis()) return
+            val triggerTime = reminderTriggerMillis(date, time) ?: return
 
             val identity = taskId.ifBlank { title }
 
@@ -108,4 +102,25 @@ object NotificationScheduler {
             e.printStackTrace()
         }
     }
+}
+
+/**
+ * 🔔 Epoch millis when a reminder for [date] + [time] (HH:mm) should fire,
+ * or null when it can't be parsed or is already in the past.
+ *
+ * 🔑 Parses ISO `yyyy-MM-dd` (what [Task.date] stores since pre-v3) and
+ * defensively tolerates a legacy `dd-MM-yyyy` value. This file used to parse
+ * with `dd-MM-yyyy` after dates migrated to ISO — lenient parsing turned
+ * "2026-10-25" into year 0025, the `> now` check failed and EVERY reminder
+ * was silently dropped. Keep in sync with [TaskUtils.parseDateTime].
+ */
+fun reminderTriggerMillis(
+    date: String,
+    time: String,
+    now: Long = System.currentTimeMillis()
+): Long? {
+    if (date.isBlank() || time.isBlank()) return null
+    val normalizedDate = TaskUtils.normalizeLegacyDate(date)
+    val at = TaskUtils.parseDateTime(normalizedDate, time) ?: return null
+    return at.time.takeIf { it > now }
 }

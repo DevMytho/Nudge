@@ -3,6 +3,7 @@ package com.dev.nudge.data.backup
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.common.api.Scope
@@ -30,6 +31,9 @@ import java.net.URLEncoder
  * "offline" from "expired auth" from "quota" from "transient — try again".
  */
 object DriveBackupClient {
+
+    /** Visible in logcat so backup failures can be diagnosed (`NudgeDrive`). */
+    private const val TAG = "NudgeDrive"
 
     private const val APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
     private const val EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
@@ -73,8 +77,12 @@ object DriveBackupClient {
             val result = Identity.getAuthorizationClient(context)
                 .authorize(buildRequest())
                 .await()
-            mapResult(result)
+            mapResult(result).also {
+                Log.d(TAG, "authorize -> " +
+                    (if (it is DriveAuth.NeedsResolution) "consent required" else it::class.simpleName))
+            }
         } catch (e: Exception) {
+            Log.w(TAG, "authorize threw: ${e.message}")
             DriveAuth.Failed(e.message ?: "authorization failed")
         }
     }
@@ -110,7 +118,22 @@ object DriveBackupClient {
     suspend fun download(context: Context): DriveOpResult =
         runOp(context) { token -> doDownload(token) }
 
+    /** Logs the final outcome — without this, failures were invisible. */
     private suspend fun runOp(
+        context: Context,
+        op: suspend (token: String) -> String?
+    ): DriveOpResult {
+        val result = driveOp(context, op)
+        Log.d(TAG, when (result) {
+            is DriveOpResult.Success ->
+                "op ok (email=${result.email ?: "-"}, hasBody=${result.body != null})"
+            is DriveOpResult.NeedsAuth -> "op waiting for consent"
+            is DriveOpResult.Error -> "op FAILED ${result.kind}: ${result.detail.take(300)}"
+        })
+        return result
+    }
+
+    private suspend fun driveOp(
         context: Context,
         op: suspend (token: String) -> String?
     ): DriveOpResult {
@@ -264,6 +287,7 @@ object DriveBackupClient {
                 }
                 if (body != null) conn.outputStream.use { it.write(body) }
                 val code = conn.responseCode
+                Log.d(TAG, "$method ${url.substringBefore('?')} -> $code")
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 conn.disconnect()
@@ -277,6 +301,7 @@ object DriveBackupClient {
                 return code to text
             } catch (e: IOException) {
                 lastError = e
+                Log.w(TAG, "$method ${url.substringBefore('?')} io error (attempt $attempt): ${e.message}")
                 if (attempt < 2) {
                     delay(backoff[attempt])
                     return@repeat

@@ -6,6 +6,7 @@ import android.media.Ringtone
 import android.net.Uri
 import android.media.RingtoneManager
 import android.os.Build
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,10 +52,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+private const val TAG = "NudgeDrive"
+
 /** Which Drive operation to resume after the user grants consent. */
 private sealed interface PendingDriveOp {
-    data object Upload : PendingDriveOp
-    data object Download : PendingDriveOp
+    /** Bundle-safe id — rememberSaveable can't store the object itself. */
+    val key: String
+    data object Upload : PendingDriveOp { override val key: String = "upload" }
+    data object Download : PendingDriveOp { override val key: String = "download" }
 }
 
 @Composable
@@ -86,8 +92,19 @@ fun SettingsScreen(
     val initial = shownName.firstOrNull()?.uppercase() ?: "G"
 
     // ---------------------------------------------------------- Drive state
-    var pendingDriveOp by remember { mutableStateOf<PendingDriveOp?>(null) }
-    var resolveIntent by remember { mutableStateOf<PendingIntent?>(null) }
+    // 🔑 rememberSaveable: Android can recreate MainActivity while the Google
+    //    consent screen is open — a plain `remember` dropped the pending op
+    //    there, so the result arrived with nothing to resume and the backup
+    //    silently did nothing (spinner stuck). Names are Bundle-safe.
+    var pendingDriveOpName by rememberSaveable { mutableStateOf<String?>(null) }
+    var resolveIntent by rememberSaveable { mutableStateOf<PendingIntent?>(null) }
+
+    fun opFromName(name: String?): PendingDriveOp? = when (name) {
+        PendingDriveOp.Upload.key -> PendingDriveOp.Upload
+        PendingDriveOp.Download.key -> PendingDriveOp.Download
+        else -> null
+    }
+
     var driveBusy by remember { mutableStateOf(false) }
     var driveStatus by remember { mutableStateOf<String?>(null) }
     var restoreResult by remember { mutableStateOf<BackupManager.RestoreResult?>(null) }
@@ -121,15 +138,17 @@ fun SettingsScreen(
             when (result) {
                 is DriveBackupClient.DriveOpResult.NeedsAuth -> {
                     // consent dialog → resume the same op from the launcher
-                    pendingDriveOp = op
+                    pendingDriveOpName = op.key
                     resolveIntent = result.pendingIntent
                     return@launch
                 }
                 is DriveBackupClient.DriveOpResult.Error -> {
+                    Log.w(TAG, "drive $op failed: ${result.kind} — ${result.detail.take(300)}")
                     driveBusy = false
                     driveStatus = driveErrorText(result.kind)
                 }
                 is DriveBackupClient.DriveOpResult.Success -> {
+                    Log.d(TAG, "drive $op ok (email=${result.email ?: "-"})")
                     driveBusy = false
                     when (op) {
                         PendingDriveOp.Upload -> {
@@ -163,27 +182,39 @@ fun SettingsScreen(
     val authLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
+        Log.d(TAG, "consent returned resultCode=${result.resultCode}")
         val auth = DriveBackupClient.authFromIntent(context, result.data)
         when (auth) {
             is DriveBackupClient.DriveAuth.Authorized -> {
-                pendingDriveOp?.let { runDriveOp(it) }
+                val op = opFromName(pendingDriveOpName)
+                pendingDriveOpName = null
+                if (op != null) runDriveOp(op) else driveBusy = false
             }
             is DriveBackupClient.DriveAuth.Failed -> {
+                Log.w(TAG, "consent failed: ${auth.reason}")
+                pendingDriveOpName = null
                 driveBusy = false
                 driveStatus = context.getString(R.string.backup_err_auth)
             }
             is DriveBackupClient.DriveAuth.NeedsResolution -> {
+                // ⚠️ keep pendingDriveOpName — a second hop must still resume it
                 resolveIntent = auth.pendingIntent
             }
         }
-        pendingDriveOp = null
     }
 
     // Drive consent resolution must happen outside composition
     LaunchedEffect(resolveIntent) {
         resolveIntent?.let { pi ->
-            authLauncher.launch(IntentSenderRequest.Builder(pi).build())
             resolveIntent = null
+            try {
+                authLauncher.launch(IntentSenderRequest.Builder(pi).build())
+            } catch (e: Exception) {
+                Log.w(TAG, "consent launch failed: ${e.message}")
+                pendingDriveOpName = null
+                driveBusy = false
+                driveStatus = context.getString(R.string.backup_err_auth)
+            }
         }
     }
 

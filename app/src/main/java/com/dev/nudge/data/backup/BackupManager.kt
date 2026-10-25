@@ -1,6 +1,7 @@
 package com.dev.nudge.data.backup
 
 import android.content.Context
+import android.util.Log
 import com.dev.nudge.data.SettingsStorage
 import com.dev.nudge.data.TaskStorage
 import com.dev.nudge.data.session.SessionRepository
@@ -18,6 +19,8 @@ import com.dev.nudge.data.session.SessionRepository
  * The UI (SettingsScreen) drives this and shows a summary.
  */
 object BackupManager {
+
+    private const val TAG = "NudgeDrive"
 
     /** What a restore actually changed — shown in the result dialog. */
     data class RestoreSummary(
@@ -132,7 +135,14 @@ object BackupManager {
                 )
                 true
             }
-            else -> false
+            is DriveBackupClient.DriveOpResult.NeedsAuth -> {
+                Log.d(TAG, "auto-backup skipped — consent required")
+                false
+            }
+            is DriveBackupClient.DriveOpResult.Error -> {
+                Log.w(TAG, "auto-backup failed: ${result.kind} — ${result.detail.take(300)}")
+                false
+            }
         }
     }
 }
