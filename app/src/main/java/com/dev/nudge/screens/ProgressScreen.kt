@@ -92,6 +92,7 @@ private val GoalYellow = Color(0xFFFFC94D)
 @Composable
 fun ProgressScreen(
     tasks: List<Task>,
+    completedTasks: List<Task>,
     progress: ProgressViewModel
 ) {
 
@@ -117,13 +118,19 @@ fun ProgressScreen(
             if (est != null && t.date.isNotBlank()) t.date to est else null
         }.groupBy({ it.first }, { it.second }).mapValues { (_, v) -> v.sum() }
     }
-    val daysWithFocus = remember(focusByDate, streakMin) {
+    // 🎯 a day counts toward the streak when focus reached the minimum **or**
+    //    when a task was completed that day — finishing a task today grows the
+    //    streak today, instead of waiting for focus minutes.
+    val completionDays = remember(completedTasks, today) {
+        StreakCalculator.completionDays(completedTasks, today)
+    }
+    val countedDays = remember(focusByDate, streakMin, completionDays) {
         focusByDate.mapNotNull { (iso, sec) ->
             if (sec >= streakMin * 60) runCatching { LocalDate.parse(iso) }.getOrNull() else null
-        }.toSet()
+        }.toSet() + completionDays
     }
-    val streak = remember(daysWithFocus, today) {
-        StreakCalculator.compute(daysWithFocus, today)
+    val streak = remember(countedDays, today) {
+        StreakCalculator.compute(countedDays, today)
     }
 
     // week boundaries honouring weekStartsOn
@@ -219,7 +226,7 @@ fun ProgressScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     repeat(7) { i ->
                         val day = weekStartDay.plusDays(i.toLong())
-                        val counted = day in daysWithFocus
+                        val counted = day in countedDays
                         val future = day.isAfter(today)
                         val color = when {
                             future -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)

@@ -1,8 +1,12 @@
 package com.dev.nudge.model
 
 import android.content.Context
+import android.util.Log
 import com.dev.nudge.data.FirestoreRepository
+import com.dev.nudge.data.SettingsStorage
 import com.dev.nudge.data.TaskStorage
+import com.dev.nudge.data.calendar.CalendarSync
+import com.dev.nudge.widget.NudgeWidgetProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +51,10 @@ class TaskViewModel(
 
     private val _hideCompleted = MutableStateFlow(false)
     val hideCompleted: StateFlow<Boolean> = _hideCompleted
+
+    /** 📅 bumped after each calendar reconcile — Tasks tab reloads events. */
+    private val _calendarRevision = MutableStateFlow(0)
+    val calendarRevision: StateFlow<Int> = _calendarRevision
 
     /**
      * taskId → focused seconds (sum of FOCUS segments). Precomputed here so
@@ -103,6 +111,7 @@ class TaskViewModel(
             scope.launch { TaskStorage.saveTasks(context, updated) }
         }
         reminders.scheduleIfFuture(task)
+        syncCalendar()
     }
 
     fun updateTask(task: Task) {
@@ -116,6 +125,7 @@ class TaskViewModel(
         // 🔁 edit = cancel the old reminder, then re-arm for the new date/time
         reminders.cancel(task)
         reminders.scheduleIfFuture(task)
+        syncCalendar()
     }
 
     fun completeTask(task: Task) {
@@ -123,41 +133,50 @@ class TaskViewModel(
             isCompleted = true,
             completedAt = System.currentTimeMillis()
         )
+        // ⚡ update the UI IMMEDIATELY, signed in or not — the Progress-tab
+        //    streak must grow the moment the task is struck off, without
+        //    waiting for a Firestore round-trip. The snapshot listener
+        //    reconciles with server state as soon as it arrives.
+        _tasks.value = _tasks.value.filter { it.id != task.id }
+        _completedTasks.value = _completedTasks.value.filter { it.id != task.id } + completed
+
         if (isLoggedIn()) {
             scope.launch { FirestoreRepository.completeTask(completed) }
         } else {
-            val updatedActive = _tasks.value.filter { it.id != task.id }
-            val updatedCompleted = _completedTasks.value + completed
-            _tasks.value = updatedActive
-            _completedTasks.value = updatedCompleted
+            val activeNow = _tasks.value
+            val completedNow = _completedTasks.value
             scope.launch {
-                TaskStorage.saveTasks(context, updatedActive)
-                TaskStorage.saveCompletedTasks(context, updatedCompleted)
+                TaskStorage.saveTasks(context, activeNow)
+                TaskStorage.saveCompletedTasks(context, completedNow)
             }
         }
         // 🔕 a completed task must never fire its reminder
         reminders.cancel(task)
+        syncCalendar()
     }
 
     /** 🔁 Un-strike a completed task: back to active, reminder re-armed. */
     fun uncompleteTask(task: Task) {
         val active = task.copy(isCompleted = false, completedAt = null)
+        // ⚡ same optimistic update as [completeTask] — instant in both modes.
+        _completedTasks.value = _completedTasks.value.filter { it.id != task.id }
+        _tasks.value = _tasks.value.filter { it.id != task.id } + active
+
         if (isLoggedIn()) {
             scope.launch {
                 FirestoreRepository.addTask(active)
                 FirestoreRepository.deleteCompletedTask(task)
             }
         } else {
-            val updatedActive = _tasks.value + active
-            val updatedCompleted = _completedTasks.value.filter { it.id != task.id }
-            _tasks.value = updatedActive
-            _completedTasks.value = updatedCompleted
+            val activeNow = _tasks.value
+            val completedNow = _completedTasks.value
             scope.launch {
-                TaskStorage.saveTasks(context, updatedActive)
-                TaskStorage.saveCompletedTasks(context, updatedCompleted)
+                TaskStorage.saveTasks(context, activeNow)
+                TaskStorage.saveCompletedTasks(context, completedNow)
             }
         }
         reminders.scheduleIfFuture(active)
+        syncCalendar()
     }
 
     /** 🗑 Permanently remove an active task (used by swipe/delete + undo). */
@@ -170,6 +189,7 @@ class TaskViewModel(
             scope.launch { TaskStorage.saveTasks(context, updated) }
         }
         reminders.cancel(task)
+        syncCalendar()
     }
 
     /** ↩️ Undo a delete: bring the task back and re-arm its reminder. */
@@ -182,6 +202,25 @@ class TaskViewModel(
             scope.launch { TaskStorage.saveTasks(context, updated) }
         }
         reminders.scheduleIfFuture(task)
+        syncCalendar()
+    }
+
+    /**
+     * 🗑 Permanent delete of a FINISHED task (Settings → Finished tasks).
+     * Optimistic like the other mutations; Firestore listener reconciles.
+     */
+    fun deleteCompleted(task: Task) {
+        _completedTasks.value = _completedTasks.value.filter { it.id != task.id }
+        val remaining = _completedTasks.value
+        scope.launch {
+            if (isLoggedIn()) {
+                runCatching { FirestoreRepository.deleteCompletedTask(task) }
+            } else {
+                TaskStorage.saveCompletedTasks(context, remaining)
+            }
+        }
+        // 🏠 finished-today count on the widgets may have changed
+        NudgeWidgetProvider.refresh(context)
     }
 
     /** 📅 Tasks-tab: date strip selection (state survives rotation). */
@@ -197,6 +236,34 @@ class TaskViewModel(
     /** Called by the session layer whenever focus segments change (Phase 2). */
     fun setActualSeconds(map: Map<String, Int>) {
         _actualSecondsByTask.value = map
+    }
+
+    /**
+     * 📅 Push the current task list to Google Calendar (when enabled).
+     * Called after EVERY mutation — reconcile is idempotent and skips
+     * unchanged tasks (zero HTTP), so this is cheap.
+     */
+    fun syncCalendar() {
+        scope.launch {
+            try {
+                if (!SettingsStorage.load(context).calendarSyncEnabled) return@launch
+                val result = CalendarSync.reconcile(context) { _tasks.value }
+                if (result.status == CalendarSync.Status.OK) {
+                    if (result.changed) {
+                        // 🔄 events really changed → drop cached days so the
+                        //    Tasks tab re-reads them (instant after fetch)
+                        CalendarSync.invalidateDays()
+                        _calendarRevision.value = _calendarRevision.value + 1
+                    }
+                    // 🏠 widgets mirror task state too
+                    NudgeWidgetProvider.refresh(context)
+                } else {
+                    Log.w("NudgeCalendar", "background calendar sync: ${result.status}")
+                }
+            } catch (e: Exception) {
+                Log.w("NudgeCalendar", "syncCalendar failed: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -231,6 +298,7 @@ class TaskViewModel(
             reminders.cancel(task)
             reminders.scheduleIfFuture(task)
         }
+        syncCalendar()
     }
 
     /**
@@ -244,6 +312,8 @@ class TaskViewModel(
             _tasks.value = emptyList()
             _completedTasks.value = emptyList()
             FirebaseAuth.getInstance().signOut()
+            // 🏠 widgets must not keep showing the signed-out user's data
+            NudgeWidgetProvider.refresh(context)
         }
     }
 

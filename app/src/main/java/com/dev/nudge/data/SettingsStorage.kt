@@ -40,7 +40,9 @@ data class UserSettings(
     val hapticsEnabled: Boolean = true,
     val lastBackupAt: Long? = null,
     val autoBackupEnabled: Boolean = false,
-    val driveAccountEmail: String? = null
+    val driveAccountEmail: String? = null,
+    /** 📅 two-way Google Calendar sync (timed tasks → events). */
+    val calendarSyncEnabled: Boolean = false
 ) {
     companion object {
         // 🔥 25 is only the DEFAULT of this setting — never a hardcoded timer.
@@ -71,6 +73,7 @@ object SettingsStorage {
         val HAPTICS = booleanPreferencesKey("haptics_enabled")
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val DRIVE_EMAIL = stringPreferencesKey("drive_account_email")
+        val CALENDAR_SYNC = booleanPreferencesKey("calendar_sync_enabled")
     }
 
     // epoch millis exceeds Int, hence a Long-typed key
@@ -115,7 +118,8 @@ object SettingsStorage {
                 hapticsEnabled = p[Keys.HAPTICS] ?: true,
                 lastBackupAt = p[LAST_BACKUP_AT],
                 autoBackupEnabled = p[Keys.AUTO_BACKUP] ?: false,
-                driveAccountEmail = p[Keys.DRIVE_EMAIL]
+                driveAccountEmail = p[Keys.DRIVE_EMAIL],
+                calendarSyncEnabled = p[Keys.CALENDAR_SYNC] ?: false
             )
         } catch (e: Exception) {
             e.printStackTrace()
@@ -142,6 +146,7 @@ object SettingsStorage {
             p[Keys.AUTO_BACKUP] = s.autoBackupEnabled
             if (s.driveAccountEmail == null) p.remove(Keys.DRIVE_EMAIL)
             else p[Keys.DRIVE_EMAIL] = s.driveAccountEmail
+            p[Keys.CALENDAR_SYNC] = s.calendarSyncEnabled
         }
     }
 }

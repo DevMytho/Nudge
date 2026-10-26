@@ -7,4 +7,11 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Home-screen widgets (light) -->
+    <color name="widget_surface">#FFFFFFFF</color>
+    <color name="widget_stroke">#14000000</color>
+    <color name="widget_text">#DE000000</color>
+    <color name="widget_subtle">#8E8E93</color>
+    <color name="widget_accent">#3B7DED</color>
 </resources>

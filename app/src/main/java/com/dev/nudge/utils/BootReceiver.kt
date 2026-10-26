@@ -7,6 +7,7 @@ import com.dev.nudge.data.TaskStorage
 import com.dev.nudge.data.TimerStatus
 import com.dev.nudge.data.TimerStorage
 import com.dev.nudge.data.FirestoreRepository
+import com.dev.nudge.widget.NudgeWidgetProvider
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +59,9 @@ class BootReceiver : BroadcastReceiver() {
                             task.critical
                         )
                     }
+
+                // 🏠 widgets too — focus history survives a reboot in Room
+                NudgeWidgetProvider.refresh(context)
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {

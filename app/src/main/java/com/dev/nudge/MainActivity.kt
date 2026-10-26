@@ -41,11 +41,13 @@ import com.dev.nudge.data.ThemeMode
 import com.dev.nudge.data.UserSettings
 import com.dev.nudge.data.backup.BackupManager
 import com.dev.nudge.model.Task
+import com.dev.nudge.model.TaskUtils
 import com.dev.nudge.model.TaskViewModel
 import com.dev.nudge.model.TimerViewModel
 import com.dev.nudge.screens.*
 import com.dev.nudge.ui.theme.*
 import com.dev.nudge.utils.NotificationHelper
+import com.dev.nudge.widget.NudgeWidgetProvider
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 
@@ -69,6 +71,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // 🔁 reconcile whatever happened while the app was backgrounded
         timerViewModel.refresh()
+        // 🏠 push fresh streak/tasks to the home-screen widgets
+        NudgeWidgetProvider.refresh(applicationContext)
     }
 
     override fun onDestroy() {
@@ -223,6 +227,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val tasks by taskViewModel.tasks.collectAsState()
+                val completedTasks by taskViewModel.completedTasks.collectAsState()
 
             // 📊 focused seconds per task, straight from Room sessions
             LaunchedEffect(Unit) {
@@ -387,6 +392,7 @@ class MainActivity : ComponentActivity() {
                             val tasksSelectedDate by taskViewModel.selectedDate.collectAsState()
                             val actualSeconds by taskViewModel.actualSecondsByTask.collectAsState()
                             val hideCompleted by taskViewModel.hideCompleted.collectAsState()
+                            val calendarRevision by taskViewModel.calendarRevision.collectAsState()
 
                             TasksScreen(
                                 tasks = tasks,
@@ -394,6 +400,8 @@ class MainActivity : ComponentActivity() {
                                 actualSecondsByTask = actualSeconds,
                                 hideCompleted = hideCompleted,
                                 personalName = greetingName,
+                                calendarEnabled = settings.calendarSyncEnabled,
+                                calendarRevision = calendarRevision,
                                 onSelectDate = { taskViewModel.selectDate(it) },
                                 onToggleHideCompleted = { taskViewModel.toggleHideCompleted() },
                                 onToggleComplete = { task ->
@@ -499,6 +507,7 @@ class MainActivity : ComponentActivity() {
                         composable("progress") {
                             ProgressScreen(
                                 tasks = tasks,
+                                completedTasks = completedTasks,
                                 progress = progressViewModel
                             )
                         }
@@ -521,6 +530,13 @@ class MainActivity : ComponentActivity() {
                                         launchSingleTop = true
                                     }
                                 },
+                                onOpenFinished = {
+                                    navController.navigate("finished")
+                                },
+                                onCalendarEnabled = {
+                                    // first sync right after consent is granted
+                                    taskViewModel.syncCalendar()
+                                },
                                 onRestore = { json ->
                                     BackupManager.restore(
                                         context = context,
@@ -529,6 +545,23 @@ class MainActivity : ComponentActivity() {
                                         localCompleted = taskViewModel.completedTasks.value,
                                         applyTasks = taskViewModel::applyRestored
                                     )
+                                }
+                            )
+                        }
+
+                        composable("finished") {
+                            FinishedTasksScreen(
+                                completedTasks = completedTasks,
+                                onBack = { navController.popBackStack() },
+                                onReschedule = { task ->
+                                    // ↩️ active again, dated today — uncompleteTask
+                                    //    re-arms reminders and re-syncs storage
+                                    taskViewModel.uncompleteTask(
+                                        task.copy(date = TaskUtils.todayIso())
+                                    )
+                                },
+                                onDelete = { task ->
+                                    taskViewModel.deleteCompleted(task)
                                 }
                             )
                         }

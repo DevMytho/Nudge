@@ -3,6 +3,8 @@ package com.dev.nudge.model
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /**
  * Deterministic streak tests (spec §11): gaps, today pending, DST edges,
@@ -78,6 +80,58 @@ class StreakCalculatorTest {
         )
         assertEquals(5, r.current)
         assertEquals(5, r.best)
+    }
+
+    // ------------------------------------------------- completion days
+
+    @Test
+    fun `completing a task today starts the streak the same day`() {
+        // Finishing a task counts on its own day — no focus minutes needed.
+        val zone = ZoneId.of("UTC")
+        val completedAt = ZonedDateTime.of(today.atTime(9, 30), zone)
+            .toInstant().toEpochMilli()
+
+        val counted = StreakCalculator.completionDays(listOf(completedAt), zone)
+        assertEquals(setOf(today), counted)
+
+        val r = StreakCalculator.compute(counted, today)
+        assertEquals(1, r.current) // ✅ updated on the day it happened
+        assertEquals(1, r.best)
+    }
+
+    @Test
+    fun `completion and focus days merge into one run`() {
+        val zone = ZoneId.of("UTC")
+        val completedToday = ZonedDateTime.of(today.atTime(18, 0), zone)
+            .toInstant().toEpochMilli()
+
+        val counted =
+            StreakCalculator.completionDays(listOf(completedToday), zone) +
+                setOf(today.minusDays(1), today.minusDays(2)) // focus days
+
+        val r = StreakCalculator.compute(counted, today)
+        assertEquals(3, r.current)
+        assertEquals(3, r.best)
+    }
+
+    @Test
+    fun `invalid or missing completion timestamps are ignored`() {
+        val zone = ZoneId.of("UTC")
+        val counted = StreakCalculator.completionDays(listOf(0L, -5L), zone)
+        assertEquals(emptySet<LocalDate>(), counted)
+    }
+
+    @Test
+    fun `completion timestamp maps to the local calendar day`() {
+        val zone = ZoneId.of("Asia/Kolkata") // UTC+5:30, no DST
+        // 2026-10-24 22:00 IST == 2026-10-24 16:30 UTC — same day here,
+        // but a UTC-zone conversion of 01:30 IST would roll to the previous day.
+        val lateNight = ZonedDateTime.of(2026, 10, 25, 1, 30, 0, 0, zone)
+            .toInstant().toEpochMilli()
+        assertEquals(
+            setOf(LocalDate.of(2026, 10, 25)),
+            StreakCalculator.completionDays(listOf(lateNight), zone)
+        )
     }
 
     @Test

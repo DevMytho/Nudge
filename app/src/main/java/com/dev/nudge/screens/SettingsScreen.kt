@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -43,6 +44,7 @@ import com.dev.nudge.data.UserSettings
 import com.dev.nudge.data.WeekStart
 import com.dev.nudge.data.backup.BackupManager
 import com.dev.nudge.data.backup.DriveBackupClient
+import com.dev.nudge.data.calendar.CalendarClient
 import com.dev.nudge.ui.theme.DarkText
 import com.dev.nudge.ui.theme.accentSwatch
 import com.google.firebase.auth.FirebaseAuth
@@ -69,6 +71,8 @@ fun SettingsScreen(
     onLoginClick: () -> Unit,
     onLogout: () -> Unit,
     onReplayTutorial: () -> Unit,
+    onOpenFinished: () -> Unit,
+    onCalendarEnabled: () -> Unit,
     onRestore: suspend (String) -> BackupManager.RestoreResult
 ) {
 
@@ -108,6 +112,8 @@ fun SettingsScreen(
     var driveBusy by remember { mutableStateOf(false) }
     var driveStatus by remember { mutableStateOf<String?>(null) }
     var restoreResult by remember { mutableStateOf<BackupManager.RestoreResult?>(null) }
+    // 🆕 What's-new changelog (Settings → Tutorial → What's new)
+    var showWhatsNew by rememberSaveable { mutableStateOf(false) }
 
     fun driveErrorText(kind: DriveBackupClient.DriveErrorKind): String =
         when (kind) {
@@ -145,7 +151,10 @@ fun SettingsScreen(
                 is DriveBackupClient.DriveOpResult.Error -> {
                     Log.w(TAG, "drive $op failed: ${result.kind} — ${result.detail.take(300)}")
                     driveBusy = false
-                    driveStatus = driveErrorText(result.kind)
+                    // Show the mapped message AND the raw reason (truncated),
+                    // so a console-side problem is visible without logcat.
+                    driveStatus = driveErrorText(result.kind) +
+                        if (result.detail.isBlank()) "" else "\n(${result.detail.take(160)})"
                 }
                 is DriveBackupClient.DriveOpResult.Success -> {
                     Log.d(TAG, "drive $op ok (email=${result.email ?: "-"})")
@@ -214,6 +223,65 @@ fun SettingsScreen(
                 pendingDriveOpName = null
                 driveBusy = false
                 driveStatus = context.getString(R.string.backup_err_auth)
+            }
+        }
+    }
+
+    // ------------------------------------------------------- Calendar state
+    var calendarStatus by remember { mutableStateOf<String?>(null) }
+    var calendarConsentPending by rememberSaveable { mutableStateOf(false) }
+    var calResolveIntent by remember { mutableStateOf<PendingIntent?>(null) }
+
+    /** Ask for the calendar scope; flips the setting on once granted. */
+    fun enableCalendar() {
+        scope.launch {
+            calendarStatus = null
+            when (val auth = CalendarClient.authorize(context)) {
+                is CalendarClient.CalAuth.Authorized -> {
+                    onSettingsChange(settings.copy(calendarSyncEnabled = true))
+                    onCalendarEnabled()
+                }
+                is CalendarClient.CalAuth.NeedsResolution -> {
+                    calendarConsentPending = true
+                    calResolveIntent = auth.pendingIntent
+                }
+                is CalendarClient.CalAuth.Failed -> {
+                    calendarConsentPending = false
+                    calendarStatus = auth.reason
+                }
+            }
+        }
+    }
+
+    val calendarAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val auth = CalendarClient.authFromIntent(context, result.data)
+        when (auth) {
+            is CalendarClient.CalAuth.Authorized -> {
+                calendarConsentPending = false
+                onSettingsChange(settings.copy(calendarSyncEnabled = true))
+                onCalendarEnabled()
+            }
+            is CalendarClient.CalAuth.Failed -> {
+                calendarConsentPending = false
+                calendarStatus = context.getString(R.string.calendar_consent_error)
+            }
+            is CalendarClient.CalAuth.NeedsResolution -> {
+                calResolveIntent = auth.pendingIntent
+            }
+        }
+    }
+
+    LaunchedEffect(calResolveIntent) {
+        calResolveIntent?.let { pi ->
+            calResolveIntent = null
+            try {
+                calendarAuthLauncher.launch(IntentSenderRequest.Builder(pi).build())
+            } catch (e: Exception) {
+                Log.w(TAG, "calendar consent launch failed: ${e.message}")
+                calendarConsentPending = false
+                calendarStatus = context.getString(R.string.calendar_consent_error)
             }
         }
     }
@@ -803,6 +871,68 @@ fun SettingsScreen(
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
 
+        // ================================================ GOOGLE CALENDAR
+        Text(
+            stringResource(R.string.calendar_sync_title),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        SwitchRow(
+            label = stringResource(R.string.calendar_sync_label),
+            checked = settings.calendarSyncEnabled
+        ) { new ->
+            if (new) {
+                if (!calendarConsentPending) enableCalendar()
+            } else {
+                calendarStatus = null
+                calendarConsentPending = false
+                onSettingsChange(settings.copy(calendarSyncEnabled = false))
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            stringResource(R.string.calendar_sync_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        calendarStatus?.let { status ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
+        // ================================================ FINISHED TASKS
+        // Same pattern as Tutorial / What's new: a button → its own page.
+        Text(
+            stringResource(R.string.finished_title),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = onOpenFinished,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.finished_open))
+        }
+
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
         // ================================================ TUTORIAL
         Text(
             stringResource(R.string.settings_tutorial),
@@ -817,6 +947,27 @@ fun SettingsScreen(
         ) {
             Text(stringResource(R.string.settings_replay_tutorial))
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ================================================ WHAT'S NEW
+        Text(
+            stringResource(R.string.whats_new),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        OutlinedButton(
+            onClick = { showWhatsNew = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(stringResource(R.string.whats_new_open))
+        }
+
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
 
         Spacer(Modifier.height(24.dp))
 
@@ -858,6 +1009,43 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { restoreResult = null }) {
+                    Text(stringResource(R.string.ok))
+                }
+            }
+        )
+    }
+
+    // 🆕 What's new — every feature added after the v2 release
+    if (showWhatsNew) {
+        AlertDialog(
+            onDismissRequest = { showWhatsNew = false },
+            title = { Text(stringResource(R.string.whats_new_title)) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 460.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        stringResource(R.string.whats_new_intro),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    WhatsNewGroup(R.string.whats_new_release_title, R.array.whats_new_release)
+                    WhatsNewGroup(R.string.whats_new_tasks_title, R.array.whats_new_tasks)
+                    WhatsNewGroup(R.string.whats_new_focus_title, R.array.whats_new_focus)
+                    WhatsNewGroup(R.string.whats_new_progress_title, R.array.whats_new_progress)
+                    WhatsNewGroup(R.string.whats_new_backup_title, R.array.whats_new_backup)
+                    WhatsNewGroup(R.string.whats_new_personal_title, R.array.whats_new_personal)
+                    WhatsNewGroup(R.string.whats_new_fixes_title, R.array.whats_new_fixes)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showWhatsNew = false }) {
                     Text(stringResource(R.string.ok))
                 }
             }
@@ -981,4 +1169,32 @@ fun AboutSection() {
             )
         }
     }
+}
+
+/** One "What's new" group: heading + bullet list (readable, not a wall of git). */
+@Composable
+private fun WhatsNewGroup(titleRes: Int, itemsRes: Int) {
+    Text(
+        text = stringResource(titleRes),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary
+    )
+
+    Spacer(Modifier.height(6.dp))
+
+    stringArrayResource(itemsRes).forEach { item ->
+        Row(modifier = Modifier.padding(bottom = 4.dp)) {
+            Text(
+                text = "•  ",
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = item,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+
+    Spacer(Modifier.height(14.dp))
 }

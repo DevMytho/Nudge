@@ -121,11 +121,18 @@ object BackupManager {
      */
     suspend fun autoBackup(context: Context): Boolean {
         val settings = SettingsStorage.load(context)
-        if (!settings.autoBackupEnabled) return false
+        if (!settings.autoBackupEnabled) {
+            // ⚠️ W on purpose: this device drops Log.d from release apps,
+            //    and "did the backup run?" must always be answerable.
+            Log.w(TAG, "auto-backup disabled in settings — skipped")
+            return false
+        }
+        Log.w(TAG, "auto-backup starting…")
 
         val json = exportJson(context)
         return when (val result = DriveBackupClient.upload(context, json)) {
             is DriveBackupClient.DriveOpResult.Success -> {
+                Log.w(TAG, "auto-backup OK (email=${result.email ?: "-"})")
                 SettingsStorage.save(
                     context,
                     settings.copy(
@@ -136,7 +143,7 @@ object BackupManager {
                 true
             }
             is DriveBackupClient.DriveOpResult.NeedsAuth -> {
-                Log.d(TAG, "auto-backup skipped — consent required")
+                Log.w(TAG, "auto-backup skipped — consent required")
                 false
             }
             is DriveBackupClient.DriveOpResult.Error -> {

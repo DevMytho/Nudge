@@ -16,9 +16,10 @@ Built with a focus on **minimal UI, smooth performance, and real-world usability
 
 **Tasks**
 * 📝 Create, edit and complete tasks with date, time, priority (Low/Medium/High) and a critical flag
-* 📅 Date-wise groups — Today / Tomorrow / Upcoming — sorted critical-first, then by priority
+* 📅 Date-wise Tasks tab: one day at a time with a Day / All toggle, week strip, carried-over section and strike-off in place
 * ⏳ Live countdown labels ("45 min left", "Due • 10:30")
-* 🗑 Delete with undo snackbar; completed list with restore
+* 🗑 Delete with undo snackbar
+* ✅ **Finished-tasks page** (Settings → Finished tasks): everything you've done, with one tap to **re-schedule it to today** or **delete it permanently**
 * 🔔 Exact reminders (survive process death and reboot), auto-cancelled when a task is completed, edited or deleted
 
 **Focus / Pomodoro**
@@ -29,22 +30,33 @@ Built with a focus on **minimal UI, smooth performance, and real-world usability
 * 📋 Live session log with exact per-segment history
 
 **Progress**
-* 📊 Calendar with per-day status (planned / on-estimate / over-estimate)
-* 📈 Week-over-week focus chart and current streak
+* 📊 Month calendar with per-day status rings and a per-day detail sheet
+* 🔥 Streak (current + best) that **updates the same day you finish a task** — no waiting for focus minutes
+* 📈 Week-over-week focus chart and focused-time charts (7 / 30 days)
 * 🎯 Estimate accuracy tracking (10% tolerance)
+
+**Home-screen widgets**
+* 🔷 Small widget: current streak + today's progress line
+* 📋 Larger widget: a window onto today's tasks (up to 6 rows + overflow), refreshed whenever tasks change — no stale or repeated rows
+
+**Google Calendar (two-way)**
+* 📅 Timed tasks become events in your primary calendar — created, updated and deleted as you edit, complete or remove them (reconciled, so unchanged tasks cost no network)
+* 🗓 Your day's events shown on the Tasks tab, **from every calendar your account can see** (shared calendars like a college mail included — auto-discovered)
+* 🔑 One consent prompt from Settings; background syncs never pop dialogs
 
 **Account & data**
 * 🔐 Firebase Authentication — email/password and Google Sign-In
 * 👤 Guest mode: fully usable without an account (local-only data)
 * ☁️ Real-time Firestore sync when signed in (per-user security rules)
 * ☁️ Google Drive backup & restore (hidden app-data folder) with merge-on-restore, plus export/import to a file
-* 🔄 Automatic background backup toggle
+* 🔄 Automatic background backup on app exit — runs off the main thread, with the outcome always visible in logcat (`NudgeDrive`)
 
-**Personalization**
+**Personalization & info**
 * 🎨 Accent color picker applied app-wide
 * 🌙 Light/dark theme with legacy-theme migration
-* 🔔 Custom timer ringtone picker with test preview
-* 🚀 First-launch onboarding
+* 🔔 Custom timer ringtone picker with test preview + optional ring for Critical reminders
+* 🚀 First-launch onboarding, replayable any time from Settings
+* 🆕 **What's New** section in Settings — every feature since v2 in plain words
 
 ---
 
@@ -69,6 +81,8 @@ Most productivity apps today are:
 * **Local data:** DataStore (tasks/settings) + Room (focus sessions)
 * **Backend:** Firebase Authentication + Cloud Firestore
 * **Cloud backup:** Google Drive API (REST v3, app-data folder)
+* **Calendar:** Google Calendar API (REST — `calendar.events` + `calendar.calendarlist` scopes)
+* **Widgets:** classic `AppWidgetProvider` / RemoteViews (streak + tasks)
 * **Alarms:** `AlarmManager.setAlarmClock` + foreground service for ringing
 * **Tools:** Android Studio, Gradle (Kotlin DSL)
 
@@ -100,7 +114,7 @@ Run everything:
 
 * 🔍 Search and filters across tasks
 * ♻️ Recurring tasks
-* 📱 Home-screen widget
+* 📱 Widget interaction (tap individual task rows to complete)
 * 🌍 Localization (currently English only)
 * 📱 Tablet layout
 

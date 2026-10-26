@@ -24,12 +24,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dev.nudge.CardBeige
 import com.dev.nudge.R
 import com.dev.nudge.components.TaskCard
+import com.dev.nudge.data.calendar.CalendarClient
+import com.dev.nudge.data.calendar.CalendarSync
 import com.dev.nudge.model.Task
 import com.dev.nudge.model.TaskUtils
 import kotlinx.coroutines.launch
@@ -52,6 +56,8 @@ fun TasksScreen(
     actualSecondsByTask: Map<String, Int>,
     hideCompleted: Boolean,
     personalName: String? = null,
+    calendarEnabled: Boolean = false,
+    calendarRevision: Int = 0,
     onSelectDate: (String) -> Unit,
     onToggleHideCompleted: () -> Unit,
     onToggleComplete: (Task) -> Unit,
@@ -62,6 +68,22 @@ fun TasksScreen(
 ) {
 
     val todayIso = TaskUtils.todayIso()
+
+    // 📅 Google Calendar events for the selected day (only when the sync
+    //    is enabled in Settings). Reloads when the date, the toggle, or a
+    //    background sync ([calendarRevision]) changes.
+    val localContext = LocalContext.current
+    var calGroups by remember { mutableStateOf<List<CalendarSync.DayCalendar>>(emptyList()) }
+    // 📢 fires when a background calendar refresh lands or sync changed events
+    val calSyncRevision by CalendarSync.revision.collectAsState()
+    LaunchedEffect(selectedDate, calendarEnabled, calendarRevision, calSyncRevision) {
+        calGroups = if (calendarEnabled) {
+            // ⚡ cached days return instantly (stale-while-revalidate behind)
+            CalendarSync.loadDay(localContext, selectedDate)
+        } else {
+            emptyList()
+        }
+    }
 
     var view by remember { mutableStateOf(TaskView.DAY) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -334,6 +356,35 @@ fun TasksScreen(
                     }
                 }
 
+                // 📅 GOOGLE CALENDAR — this day's events from every calendar
+                //    the account can see, above the tasks
+                if (calendarEnabled && view == TaskView.DAY && calGroups.isNotEmpty()) {
+                    item(key = "calendar") {
+                        Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                            Text(
+                                text = stringResource(R.string.calendar_day_header),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            calGroups.forEach { group ->
+                                if (calGroups.size > 1) {
+                                    Text(
+                                        text = group.calendarTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(bottom = 2.dp)
+                                    )
+                                }
+                                group.events.forEach { ev ->
+                                    CalendarEventRow(ev)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 when (view) {
                     TaskView.DAY -> {
 
@@ -444,6 +495,34 @@ private fun SectionHeader(title: String) {
             .background(MaterialTheme.colorScheme.background)
             .padding(top = 12.dp, bottom = 6.dp)
     )
+}
+
+/** One Google Calendar entry: time on the left, title on the right. */
+@Composable
+private fun CalendarEventRow(ev: CalendarClient.CalEvent) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = if (ev.allDay) {
+                stringResource(R.string.calendar_all_day)
+            } else {
+                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ev.startMillis))
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.width(64.dp)
+        )
+        Text(
+            text = ev.title,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable

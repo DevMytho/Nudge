@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.dev.nudge.model.Task
 import com.dev.nudge.model.normalized
+import com.dev.nudge.widget.NudgeWidgetProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
@@ -23,6 +24,8 @@ object TaskStorage {
         context.dataStore.edit {
             it[TASKS_KEY] = json
         }
+        // 🏠 widgets read this store — refresh them only AFTER the write lands
+        NudgeWidgetProvider.refresh(context)
     }
 
     suspend fun loadTasks(context: Context): List<Task> {
@@ -34,6 +37,7 @@ object TaskStorage {
         context.dataStore.edit {
             it[COMPLETED_KEY] = json
         }
+        NudgeWidgetProvider.refresh(context)
     }
 
     suspend fun loadCompletedTasks(context: Context): List<Task> {
@@ -46,6 +50,7 @@ object TaskStorage {
             prefs.remove(TASKS_KEY)
             prefs.remove(COMPLETED_KEY)
         }
+        NudgeWidgetProvider.refresh(context)
     }
 
     private suspend fun readList(context: Context, key: Preferences.Key<String>): List<Task> {

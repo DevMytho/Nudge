@@ -7,8 +7,10 @@ import android.util.Log
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.common.api.Scope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -41,6 +43,7 @@ object DriveBackupClient {
 
     private const val FILES_URL = "https://www.googleapis.com/drive/v3/files"
     private const val UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
+    private const val MULTIPART_BOUNDARY = "nudge-backup-boundary-4f2a"
     private const val USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -112,11 +115,21 @@ object DriveBackupClient {
 
     // --------------------------------------------------------- operations
 
+    /**
+     * 🧵 All Drive work runs on [Dispatchers.IO]: callers invoke this from the
+     * main dispatcher (Settings, auto-backup on app exit), and main-thread
+     * network dies instantly with NetworkOnMainThreadException (which carries
+     * no message — it used to surface as a useless "UNKNOWN — error").
+     */
     suspend fun upload(context: Context, payload: String): DriveOpResult =
-        runOp(context) { token -> doUpload(token, payload); null }
+        withContext(Dispatchers.IO) {
+            runOp(context) { token -> doUpload(token, payload); null }
+        }
 
     suspend fun download(context: Context): DriveOpResult =
-        runOp(context) { token -> doDownload(token) }
+        withContext(Dispatchers.IO) {
+            runOp(context) { token -> doDownload(token) }
+        }
 
     /** Logs the final outcome — without this, failures were invisible. */
     private suspend fun runOp(
@@ -171,15 +184,25 @@ object DriveBackupClient {
                     if (e.body.contains("storageQuota")) {
                         DriveOpResult.Error(DriveErrorKind.QUOTA, "storage quota exceeded")
                     } else {
-                        DriveOpResult.Error(DriveErrorKind.AUTH, "HTTP ${e.code}")
+                        // keep the response body — it carries the real reason
+                        // (scope, consent, accessNotConfigured…)
+                        DriveOpResult.Error(
+                            DriveErrorKind.AUTH,
+                            "HTTP ${e.code}: ${e.body.take(300)}"
+                        )
                     }
                 e.code == 429 || e.code >= 500 ->
                     DriveOpResult.Error(DriveErrorKind.TRANSIENT, "HTTP ${e.code}")
-                else -> DriveOpResult.Error(DriveErrorKind.UNKNOWN, "HTTP ${e.code}")
+                else -> DriveOpResult.Error(
+                    DriveErrorKind.UNKNOWN,
+                    "HTTP ${e.code}: ${e.body.take(300)}"
+                )
             }
         } catch (e: IOException) {
             DriveOpResult.Error(DriveErrorKind.OFFLINE, e.message ?: "network error")
         } catch (e: Exception) {
+            // 🩻 never swallow the identity of a failure again
+            Log.w(TAG, "op threw ${e::class.java.name}: ${e.message}", e)
             mapHttp(e)
         }
     }
@@ -188,8 +211,8 @@ object DriveBackupClient {
         is HttpException -> when {
             e.code == 404 -> DriveOpResult.Error(DriveErrorKind.NOT_FOUND, "no backup")
             e.code == 401 || e.code == 403 ->
-                DriveOpResult.Error(DriveErrorKind.AUTH, "HTTP ${e.code}")
-            else -> DriveOpResult.Error(DriveErrorKind.UNKNOWN, "HTTP ${e.code}")
+                DriveOpResult.Error(DriveErrorKind.AUTH, "HTTP ${e.code}: ${e.body.take(300)}")
+            else -> DriveOpResult.Error(DriveErrorKind.UNKNOWN, "HTTP ${e.code}: ${e.body.take(300)}")
         }
         is IOException -> DriveOpResult.Error(DriveErrorKind.OFFLINE, e.message ?: "network")
         else -> DriveOpResult.Error(DriveErrorKind.UNKNOWN, e.message ?: "error")
@@ -197,33 +220,42 @@ object DriveBackupClient {
 
     // ------------------------------------------------------ Drive REST v3
 
+    /**
+     * ⚠️ NEVER use PATCH here: Android's HttpURLConnection refuses it outright
+     * (`ProtocolException: Invalid HTTP method: PATCH`) — that exception is an
+     * IOException, so the failure used to be swallowed and reported as a
+     * generic/offline error while the API was perfectly fine. Instead:
+     * delete any previous backup, then create metadata + content in ONE
+     * `multipart/related` POST (also prevents leaving a 0-byte file behind
+     * when only the metadata step succeeded).
+     */
     private suspend fun doUpload(token: String, payload: String) {
-        val existing = findFileId(token)
-        if (existing != null) {
-            val (code, body) = request(
-                "$UPLOAD_URL/$existing?uploadType=media", "PATCH", token,
-                contentType = "application/json; charset=UTF-8",
-                body = payload.toByteArray(Charsets.UTF_8)
-            )
-            if (code !in 200..299) throw HttpException(code, body)
-        } else {
-            val meta = """{"name":"$FILE_NAME","parents":["appDataFolder"]}"""
-            val (code, body) = request(
-                FILES_URL, "POST", token,
-                contentType = "application/json; charset=UTF-8",
-                body = meta.toByteArray(Charsets.UTF_8)
-            )
-            if (code !in 200..299) throw HttpException(code, body)
-            val id = json.parseToJsonElement(body).jsonObject["id"]
-                ?.jsonPrimitive?.contentOrNull
-                ?: throw HttpException(code, "missing file id")
-            val (c2, b2) = request(
-                "$UPLOAD_URL/$id?uploadType=media", "PATCH", token,
-                contentType = "application/json; charset=UTF-8",
-                body = payload.toByteArray(Charsets.UTF_8)
-            )
-            if (c2 !in 200..299) throw HttpException(c2, b2)
+        findFileId(token)?.let { deleteFile(it, token) }
+        createBackupFile(token, payload)
+    }
+
+    private suspend fun deleteFile(id: String, token: String) {
+        val (code, body) = request("$FILES_URL/$id", "DELETE", token)
+        if (code !in 200..299 && code != 404) throw HttpException(code, body)
+    }
+
+    private suspend fun createBackupFile(token: String, payload: String) {
+        val meta = """{"name":"$FILE_NAME","parents":["appDataFolder"]}"""
+        val body = buildString {
+            append("--").append(MULTIPART_BOUNDARY).append("\r\n")
+            append("Content-Type: application/json; charset=UTF-8\r\n\r\n")
+            append(meta).append("\r\n")
+            append("--").append(MULTIPART_BOUNDARY).append("\r\n")
+            append("Content-Type: application/json; charset=UTF-8\r\n\r\n")
+            append(payload).append("\r\n")
+            append("--").append(MULTIPART_BOUNDARY).append("--\r\n")
         }
+        val (code, resp) = request(
+            "$UPLOAD_URL?uploadType=multipart", "POST", token,
+            contentType = "multipart/related; boundary=$MULTIPART_BOUNDARY",
+            body = body.toByteArray(Charsets.UTF_8)
+        )
+        if (code !in 200..299) throw HttpException(code, resp)
     }
 
     private suspend fun doDownload(token: String): String {

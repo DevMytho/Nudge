@@ -228,4 +228,93 @@
     <string name="backup_err_newer">This backup was made by a newer version of Nudge — update the app first</string>
     <string name="backup_err_corrupt">That file is not a valid Nudge backup</string>
     <string name="backup_file_name">nudge-backup.json</string>
+
+    <!-- Home-screen widgets -->
+    <string name="widget_streak_desc">Current streak at a glance</string>
+    <string name="widget_tasks_desc">Today\'s tasks at a glance</string>
+    <string name="widget_streak_label">Current streak</string>
+    <string name="widget_today_progress">Today: %1$d/%2$d done</string>
+    <string name="widget_day_progress">%1$d/%2$d</string>
+    <string name="widget_today_header">Today</string>
+    <string name="widget_no_tasks">No tasks planned for today</string>
+    <string name="widget_more">+%1$d more</string>
+
+    <!-- What's new (changelog since v2) -->
+    <string name="whats_new">What\'s new</string>
+    <string name="whats_new_open">See new features</string>
+    <string name="whats_new_title">What\'s new since v2</string>
+    <string name="whats_new_intro">Everything that arrived after the v2 release, in plain words.</string>
+
+    <string name="whats_new_tasks_title">Plan your day</string>
+    <string-array name="whats_new_tasks">
+        <item>Date-wise task list: one day at a time, with a Day / All toggle</item>
+        <item>Priority (High/Medium/Low), Critical flag and time estimates per task</item>
+        <item>Strike tasks off in place — done tasks stay visible where they are</item>
+        <item>Unfinished tasks roll into a "Carried over" section — never moved silently</item>
+        <item>Delete with a one-tap Undo snackbar; reminders auto-cancel when a task is done or deleted</item>
+    </string-array>
+
+    <string name="whats_new_focus_title">Focus and Pomodoro</string>
+    <string-array name="whats_new_focus">
+        <item>Rebuilt Focus tab on a shared timer engine that survives tab switches</item>
+        <item>Full Pomodoro tab: focus/break cycles, long-break blocks, live session log</item>
+        <item>Every focus and break segment is recorded exactly in local history</item>
+        <item>Link a task to a session to track actual vs estimated time</item>
+    </string-array>
+
+    <string name="whats_new_progress_title">Progress and streaks</string>
+    <string-array name="whats_new_progress">
+        <item>Progress tab with current and best streak, plus week-vs-week stats</item>
+        <item>Focused-time and estimate-accuracy charts (7 / 30 days)</item>
+        <item>Month calendar with per-day status rings and a day-detail sheet</item>
+        <item>Streak updates the same day you finish a task — no waiting</item>
+        <item>Home-screen widgets: a streak widget and a today\'s-tasks widget</item>
+    </string-array>
+
+    <string name="whats_new_backup_title">Backup and sync</string>
+    <string-array name="whats_new_backup">
+        <item>Full Google Drive backup and restore, with auto-backup on app exit</item>
+        <item>Export / import a backup file manually</item>
+        <item>Google sign-in syncs tasks across devices — guest mode works offline</item>
+        <item>Guided onboarding tour, replayable any time from Settings</item>
+    </string-array>
+
+    <string name="whats_new_personal_title">Personalization</string>
+    <string-array name="whats_new_personal">
+        <item>Light / dark / system theme with six accent colors</item>
+        <item>Custom timer ringtone, plus an optional ring for Critical reminders</item>
+        <item>Display name, haptics toggle, daily goal and streak minimum</item>
+    </string-array>
+
+    <string name="whats_new_release_title">In this latest release</string>
+    <string-array name="whats_new_release">
+        <item>Google Calendar sync: timed tasks become events, and events from all your calendars show on the Tasks tab</item>
+        <item>Finished-tasks list in Settings — see everything you have already done</item>
+        <item>Widgets now refresh cleanly — no more repeated rows in the tasks widget</item>
+    </string-array>
+
+    <string name="whats_new_fixes_title">Fixes in v3</string>
+    <string-array name="whats_new_fixes">
+        <item>Reminders fire again — the v3 date format had silently disarmed them</item>
+        <item>Fixed a startup crash for signed-in users (Firestore task mapping)</item>
+        <item>Google Drive backup upload no longer fails on Android</item>
+        <item>Streak grows the same day you finish a task — including tasks finished before v3</item>
+    </string-array>
+
+    <!-- Google Calendar sync -->
+    <string name="calendar_sync_title">Google Calendar</string>
+    <string name="calendar_sync_label">Sync tasks with Google Calendar</string>
+    <string name="calendar_sync_desc">Tasks with a time become events in your calendar, and events from every calendar shared with your account show on the Tasks tab.</string>
+    <string name="calendar_consent_error">Calendar permission was denied. Turn the sync on again to retry.</string>
+    <string name="calendar_day_header">Your calendar</string>
+    <string name="calendar_all_day">All day</string>
+
+    <!-- Finished tasks (Settings) -->
+    <string name="finished_title">Finished tasks</string>
+    <string name="finished_open">See finished tasks</string>
+    <string name="finished_empty">Nothing finished yet — strike a task off and it will show up here.</string>
+    <string name="finished_reschedule">Re-schedule to today</string>
+    <string name="finished_delete">Delete</string>
+    <string name="finished_done_on">Done %1$s</string>
+    <string name="finished_back">Back</string>
 </resources>
