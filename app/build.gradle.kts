@@ -57,8 +57,8 @@ android {
         applicationId = "com.dev.nudge"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "3"
+        versionCode = 4
+        versionName = "3.01.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

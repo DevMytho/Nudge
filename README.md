@@ -1,6 +1,8 @@
 # 🚀 Nudge – Minimal & Fast To-Do App
 
 > A lightweight, distraction-free productivity app focused on speed, simplicity, and clean design.
+>
+> **Current release: v3.01.0**
 
 ---
 

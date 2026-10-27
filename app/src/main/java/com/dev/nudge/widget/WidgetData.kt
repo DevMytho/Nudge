@@ -23,7 +23,7 @@ import java.time.LocalDate
  */
 data class WidgetSnapshot(
     val streak: StreakResult,
-    /** Today's tasks (active + completed-today), in Tasks-tab order. */
+    /** Today's ACTIVE tasks in Tasks-tab order — finished ones never shown. */
     val todayTasks: List<Task>,
     val todayDone: Int,
     val todayTotal: Int
@@ -54,13 +54,16 @@ object WidgetData {
         )
 
         val activeToday = active.filter { it.date == todayIso }
-        val doneToday = completed.filter { it.date == todayIso }
+        val finishedToday = completed.filter { it.date == todayIso }
 
+        // 🏠 The widget lists ACTIVE tasks only — finished ones never appear
+        //    as rows (the progress counts below still reflect them, so the
+        //    header's "done/total" line stays truthful).
         return WidgetSnapshot(
             streak = streak,
-            todayTasks = TaskUtils.sortTasks(activeToday + doneToday),
-            todayDone = doneToday.size,
-            todayTotal = activeToday.size + doneToday.size
+            todayTasks = TaskUtils.sortTasks(activeToday),
+            todayDone = finishedToday.size,
+            todayTotal = activeToday.size + finishedToday.size
         )
     }
 }

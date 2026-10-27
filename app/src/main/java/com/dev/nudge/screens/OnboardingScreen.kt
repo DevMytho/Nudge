@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dev.nudge.R
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -36,6 +37,15 @@ fun OnboardingScreen(
 
     val pages = 3
     val pagerState = rememberPagerState(pageCount = { pages })
+
+    // ⚡ Owned by the SCREEN, not the Next button. When the pager reaches the
+    //    last page the bottom button swaps from Next to Done and the Skip
+    //    button disappears — if the animation ran on a scope owned by the
+    //    Next button, that swap cancelled animateScrollToPage() mid-flight
+    //    and screen 3 stopped half-scrolled, forcing the user to drag it the
+    //    rest of the way. This scope only dies when the screen itself leaves
+    //    composition, so the swipe always lands centered.
+    val pagerScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -140,7 +150,11 @@ fun OnboardingScreen(
             )
 
             if (pagerState.currentPage < pages - 1) {
-                OnboardingNextButton(pagerState = pagerState, pages = pages)
+                OnboardingNextButton(
+                    pagerState = pagerState,
+                    pages = pages,
+                    scope = pagerScope
+                )
             } else {
                 Button(onClick = onDone) {
                     Text(stringResource(R.string.onboarding_done))
@@ -153,9 +167,9 @@ fun OnboardingScreen(
 @Composable
 private fun OnboardingNextButton(
     pagerState: androidx.compose.foundation.pager.PagerState,
-    pages: Int
+    pages: Int,
+    scope: CoroutineScope
 ) {
-    val scope = rememberCoroutineScope()
     Button(
         onClick = {
             scope.launch {

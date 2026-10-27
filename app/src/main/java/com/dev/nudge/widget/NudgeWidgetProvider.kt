@@ -164,14 +164,14 @@ class TasksWidgetProvider : NudgeWidgetProvider() {
         return views
     }
 
+    /**
+     * One task row. [WidgetData] only ever passes ACTIVE tasks — finished
+     * tasks never appear in the widget (the header count still includes
+     * them, so the done/total progress line stays truthful).
+     */
     private fun taskRowViews(context: Context, task: Task): RemoteViews =
         RemoteViews(context.packageName, R.layout.widget_task_row).apply {
             setTextViewText(R.id.row_title, task.title)
-            setTextViewText(R.id.row_mark, if (task.isCompleted) "\u2713" else "\u25CB")
-            if (task.isCompleted) {
-                val done = context.getColor(R.color.widget_subtle)
-                setTextColor(R.id.row_title, done)
-                setTextColor(R.id.row_mark, done)
-            }
+            setTextViewText(R.id.row_mark, "\u25CB")
         }
 }

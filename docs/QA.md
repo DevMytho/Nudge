@@ -89,7 +89,8 @@ timestamps rather than reading the wall clock.
 - [ ] Legacy theme prefs migrate on upgrade; dark mode toggle persists across restart
 - [ ] Changing settings (ringtone, focus defaults, goals) takes effect without app restart
 - [ ] Settings order at the bottom reads as one flow: Backup → Google Calendar → Finished tasks → Tutorial → What's new → About
-- [ ] **What's new** dialog lists every post-v2 feature in the newest-release group first
+- [ ] **What's new** dialog lists every post-v2 feature, with **New in v3.01.0** as the first group
+- [ ] About shows **Nudge v3.01.0** (matches `versionName` in `app/build.gradle.kts`)
 
 ## Known limitations
 - Localization: English strings only, hardcoded in Kotlin UI code.

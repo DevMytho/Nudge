@@ -286,14 +286,18 @@
         <item>Display name, haptics toggle, daily goal and streak minimum</item>
     </string-array>
 
-    <string name="whats_new_release_title">In this latest release</string>
+    <string name="whats_new_release_title">New in v3.01.0</string>
     <string-array name="whats_new_release">
         <item>Google Calendar sync: timed tasks become events, and events from all your calendars show on the Tasks tab</item>
         <item>Finished-tasks list in Settings — see everything you have already done</item>
         <item>Widgets now refresh cleanly — no more repeated rows in the tasks widget</item>
+        <item>The calendar on the Tasks tab no longer disappears — it stays visible after you add a task or jump to another date</item>
+        <item>Calendar events load faster: cached days paint instantly and refresh quietly in the background</item>
+        <item>Home-screen tasks widget now lists only active tasks — finished ones never appear on it</item>
+        <item>Tutorial screen 3 lands centred — the swipe animation no longer stops halfway</item>
     </string-array>
 
-    <string name="whats_new_fixes_title">Fixes in v3</string>
+    <string name="whats_new_fixes_title">Fixes in v3.01.0</string>
     <string-array name="whats_new_fixes">
         <item>Reminders fire again — the v3 date format had silently disarmed them</item>
         <item>Fixed a startup crash for signed-in users (Firestore task mapping)</item>

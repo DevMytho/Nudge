@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -59,6 +60,8 @@ object CalendarSync {
 
     /** Cached days younger than this are served without any network. */
     private const val DAY_FRESH_MS = 5 * 60_000L
+    /** 🩹 Delay before the single auto-retry of a failed cold fetch. */
+    private const val RETRY_DELAY_MS = 4_000L
     /** Google access tokens live ~60 min; reuse ours for 50. */
     private const val TOKEN_TTL_MS = 50 * 60_000L
     /** The calendar list changes rarely — refresh it twice a day at most. */
@@ -77,7 +80,7 @@ object CalendarSync {
 
     // ------------------------------------------------------------- caches
 
-    private data class DayEntry(val loadedAt: Long, val data: List<DayCalendar>)
+    private data class DayEntry(var loadedAt: Long, val data: List<DayCalendar>)
 
     private val cacheLock = Any()
     private val dayCache = LinkedHashMap<String, DayEntry>(8, 0.75f, true)
@@ -100,6 +103,8 @@ object CalendarSync {
     private val json = Json { ignoreUnknownKeys = true }
     private val mutex = Mutex()
     private val pendingRerun = AtomicBoolean(false)
+    /** 🩹 one auto-retry per failure streak — cleared on the next success. */
+    private val retryPending = AtomicBoolean(false)
 
     // ---------------------------------------------------------- data model
 
@@ -191,7 +196,8 @@ object CalendarSync {
     private suspend fun once(context: Context, tasks: List<Task>): ReconcileResult {
         // Writes use a FRESH authorize (not the cached read token): a stale
         // cached token would 401-loop; GMS answers silently once granted.
-        val token = when (val auth = CalendarClient.authorize(context)) {
+        val auth = CalendarClient.authorize(context)
+        val writeToken = when (auth) {
             is CalendarClient.CalAuth.Authorized -> auth.accessToken
             is CalendarClient.CalAuth.Failed -> {
                 Log.w(TAG, "sync: auth failed — ${auth.reason}")
@@ -202,6 +208,12 @@ object CalendarSync {
                 return ReconcileResult(Status.NEEDS_CONSENT, changed = false)
             }
         }
+        // ⚡ the same token is valid for READS too — hand it to the read path
+        //    so the next loadDay() skips its own GMS authorize. That call used
+        //    to run CONCURRENTLY with this reconcile right after an add, which
+        //    is what made the calendar section come back empty.
+        token = writeToken
+        tokenAt = System.currentTimeMillis()
 
         val map = loadMap(context)
         val desired = desiredFor(tasks)
@@ -217,7 +229,7 @@ object CalendarSync {
                 if (existing != null) {
                     try {
                         CalendarClient.updateEvent(
-                            token, existing.first, d.title, d.start, d.end
+                            writeToken, existing.first, d.title, d.start, d.end
                         )
                         map[d.taskId] = existing.first to d.payloadHash
                         changed = true
@@ -227,7 +239,7 @@ object CalendarSync {
                         // event vanished in Google's UI → recreate below
                     }
                 }
-                val id = CalendarClient.insertEvent(token, d.title, d.start, d.end)
+                val id = CalendarClient.insertEvent(writeToken, d.title, d.start, d.end)
                 map[d.taskId] = id to d.payloadHash
                 changed = true
                 Log.w(TAG, "created event for task ${d.taskId}")
@@ -237,7 +249,7 @@ object CalendarSync {
             val stale = map.keys - byTask.keys
             for (taskId in stale) {
                 val id = map[taskId]?.first ?: continue
-                CalendarClient.deleteEvent(token, id)
+                CalendarClient.deleteEvent(writeToken, id)
                 map.remove(taskId)
                 changed = true
                 Log.w(TAG, "removed event for task $taskId")
@@ -280,6 +292,7 @@ object CalendarSync {
                     synchronized(cacheLock) {
                         dayCache[iso] = DayEntry(System.currentTimeMillis(), fresh)
                     }
+                    retryPending.set(false)
                     Log.w(TAG, "day $iso: background refresh done in ${System.currentTimeMillis() - t1}ms")
                     _revision.value = _revision.value + 1
                 }
@@ -289,7 +302,13 @@ object CalendarSync {
 
         val fetched = fetch(context, iso)
         Log.w(TAG, "day $iso: cold fetch ${if (fetched == null) "FAILED" else "ok"} in ${System.currentTimeMillis() - t0}ms")
+        if (fetched == null) {
+            // 🩹 a transient failure must not leave the section blank until
+            //    the user happens to change date — try once more shortly.
+            scheduleRetry()
+        }
         return fetched?.also { data ->
+            retryPending.set(false)
             synchronized(cacheLock) {
                 dayCache[iso] = DayEntry(System.currentTimeMillis(), data)
             }
@@ -297,12 +316,29 @@ object CalendarSync {
     }
 
     /**
-     * 🧹 Drop all cached days (after a reconcile changed events, or when
-     * the account might have changed) and make viewers re-read.
+     * 🧹 Mark every cached day STALE (after a reconcile changed events) and
+     * make viewers re-read.
+     *
+     * ⚠️ The data is deliberately NOT dropped: dropping it forced a cold
+     * network fetch on the very next frame, so the calendar section blanked
+     * out every time a task was added (and stayed blank if that fetch
+     * failed). Stale-while-revalidate keeps the old events on screen while
+     * a background refresh swaps in the fresh ones.
      */
     fun invalidateDays() {
-        synchronized(cacheLock) { dayCache.clear() }
+        synchronized(cacheLock) {
+            dayCache.values.forEach { entry -> entry.loadedAt = 0L }
+        }
         _revision.value = _revision.value + 1
+    }
+
+    /** Schedule ONE delayed revision bump after a failed cold fetch. */
+    private fun scheduleRetry() {
+        if (!retryPending.compareAndSet(false, true)) return
+        ioScope.launch {
+            delay(RETRY_DELAY_MS)
+            _revision.value = _revision.value + 1
+        }
     }
 
     /** Session-cached OAuth token — GMS authorize is the slowest step. */
